@@ -1,7 +1,9 @@
 use clap::{Parser, Subcommand};
 
-mod create;
+mod convert;
 mod join;
+
+use itertools::Itertools;
 
 #[derive(Parser)]
 #[command(version)]
@@ -9,20 +11,20 @@ struct Args {
     #[command(subcommand)]
     commands: Commands,
 
-    //Paths to be used
+    //Strings to be used
     #[arg(global = true)]
-    paths: Vec<String>,
+    strings: Vec<String>,
 
-    ///If paths contain these strings, ignore them
+    ///If any strings contain any of these substrings, remove them
     #[arg(short, long, global = true, num_args = 1 ..)]
     ignore: Vec<String>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Create new doom wad with skin(s)
-    Create,
-    /// Join existing wads into a new wad
+    /// Convert a minecraft skin to a doom skin
+    Convert,
+    /// Join existing wads with skins into a new wad
     Join,
 }
 
@@ -30,12 +32,12 @@ fn ignoring(ignore: Vec<String>) -> impl Fn(&String) -> bool {
     move |p| !ignore.iter().any(|i| p.contains(i))
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse_from(wild::args());
 
-    let (commands, paths) = (args.commands, args.paths.into_iter().filter(ignoring(args.ignore)));
+    let (commands, paths) = (args.commands, args.strings.into_iter().filter(ignoring(args.ignore)));
     match commands {
-        Commands::Create => create::create_all(paths.into_iter()),
-        Commands::Join => join::join_all(paths.into_iter()),
+        Commands::Convert => Ok(convert::convert_all(paths.chunks(2).into_iter().map(|mut p| (p.next().unwrap(), p.next().unwrap())).into_iter())?),
+        Commands::Join => Ok(join::join_all(paths.into_iter())?),
     }
 }
