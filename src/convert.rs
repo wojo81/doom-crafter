@@ -1,9 +1,13 @@
+#![allow(dead_code)]
+
+use std::f32::consts::PI;
+
 use three_d::*;
 
 pub fn convert_all(paths_and_names: impl Iterator<Item = (String, String)>) -> anyhow::Result<()> {
-    let viewport = Viewport::new_at_origo(64, 64);
+    let viewport = Viewport::new_at_origo(128, 128);
     let context = HeadlessContext::new()?;
-    let camera = Camera::new_perspective(
+    let mut camera = Camera::new_perspective(
         viewport,
         vec3(0.0, 0.0, 2.0),
         vec3(0.0, 0.0, 0.0),
@@ -14,14 +18,25 @@ pub fn convert_all(paths_and_names: impl Iterator<Item = (String, String)>) -> a
     );
 
     for (path, name) in paths_and_names {
-        convert(path, name, &viewport, &context, &camera)?;
+        convert(path, name, &viewport, &context, &mut camera)?;
     }
 
     Ok(())
 }
 
-fn convert(path: String, name: String, viewport: &Viewport, context: &Context, camera: &Camera) -> anyhow::Result<()> {
-    let mut prism = Prism::load(path, name.clone(), Patch::BODY, Vec3::zero(), &context)?;
+fn convert(path: String, name: String, viewport: &Viewport, context: &Context, camera: &mut Camera) -> anyhow::Result<()> {
+    let atlas = image::open(&path)?;
+
+    let depth = -35.0;
+
+    let mut prisms = [
+        Prism::load(&atlas, name.clone() + "Head",      Patch::HEAD,       vec3(0.0, 11.0, depth),    vec3(0.0, 0.0, 0.0),  context),
+        Prism::load(&atlas, name.clone() + "Body",      Patch::BODY,       vec3(0.0, 2.0, depth),     vec3(0.0, 0.0, 0.0),  context),
+        Prism::load(&atlas, name.clone() + "RightLeg",  Patch::RIGHT_LEG,  vec3(-2.0, -6.0, depth),   vec3(0.0, -4.0, 0.0), context),
+        Prism::load(&atlas, name.clone() + "RightArm",  Patch::RIGHT_ARM,  vec3(-6.0, 6.0, depth),    vec3(0.0, -4.0, 0.0), context),
+        Prism::load(&atlas, name.clone() + "LeftLeg",   Patch::LEFT_LEG,   vec3(2.0, -6.0, depth),    vec3(0.0, -4.0, 0.0), context),
+        Prism::load(&atlas, name.clone() + "LeftArm",   Patch::LEFT_ARM,   vec3(6.0, 6.0, depth),     vec3(0.0, -4.0, 0.0), context)
+    ];
 
     let mut target_texture = Texture2D::new_empty::<[u8; 4]>(
         &context,
@@ -41,24 +56,13 @@ fn convert(path: String, name: String, viewport: &Viewport, context: &Context, c
         Wrapping::ClampToEdge,
         Wrapping::ClampToEdge,
     );
+
     for frame_index in 0..8 {
-        for face in prism.faces.iter_mut() {
-            face.model.set_transformation(Mat4::from_translation(vec3(0.0, 0.0, -20.0)) * Mat4::from_angle_x(degrees(frame_index as f32 * 45.0)));
-        }
+        prisms[2].set_transformation(Mat4::from_angle_x(degrees(-15.0 * frame_index as f32)));
 
         let pixels = RenderTarget::new(target_texture.as_color_target(None), depth_texture.as_depth_target())
             .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
-            .render(
-                &camera,
-                prism.faces[0].model
-                    .into_iter()
-                    .chain(&prism.faces[1].model)
-                    .chain(&prism.faces[2].model)
-                    .chain(&prism.faces[3].model)
-                    .chain(&prism.faces[4].model)
-                    .chain(&prism.faces[5].model),
-                &[]
-            )
+            .render(&camera, prisms.iter().flat_map(|p| &p.faces).map(|f| &f.model), &[])
             .read_color();
 
         use three_d_asset::io::Serialize;
@@ -70,10 +74,10 @@ fn convert(path: String, name: String, viewport: &Viewport, context: &Context, c
                 height: viewport.height,
                 ..Default::default()
             }
-            .serialize(format!("out/{name}-{frame_index}.png"))
-            .unwrap(),
-        )
-        .unwrap();
+            .serialize(format!("out/{name}-{frame_index}.png"))?,
+        )?;
+
+        camera.rotate_around_with_fixed_up(vec3(0.0, 0.0, depth), PI / 4.0, 0.0);
     }
 
     Ok(())
@@ -84,12 +88,13 @@ struct Prism {
     width: u32,
     height: u32,
     depth: u32,
+    matrix: Mat4,
 }
 
 impl Prism {
-    fn load(path: String, name: String, patch: Patch, center: Vec3, context: &Context) -> anyhow::Result<Self> {
-        let atlas = image::open(&path)?;
-        Ok(Self {
+    fn load(atlas: &image::DynamicImage, name: String, patch: Patch, translation: Vec3, center: Vec3, context: &Context) -> Self {
+        let matrix = Mat4::from_translation(translation);
+        let mut prism = Self {
             faces: [
                 Face::new_front(&name, &atlas, patch, center,  context),
                 Face::new_right(&name, &atlas, patch, center, context),
@@ -97,8 +102,18 @@ impl Prism {
                 Face::new_left(&name, &atlas, patch, center, context),
                 Face::new_top(&name, &atlas, patch, center, context),
                 Face::new_bottom(&name, &atlas, patch, center, context)
-            ], width: patch.width, height: patch.height, depth: patch.depth
-        })
+            ], width: patch.width, height: patch.height, depth: patch.depth, matrix
+        };
+        for face in prism.faces.iter_mut() {
+            face.model.set_transformation(matrix);
+        }
+        prism
+    }
+
+    fn set_transformation(&mut self, transformation: Mat4) {
+        for face in self.faces.iter_mut() {
+            face.model.set_transformation(self.matrix * transformation);
+        }
     }
 }
 
@@ -122,7 +137,7 @@ impl Face {
         Self::new(name, atlas, patch, positions, 0, context)
     }
 
-    fn new_left(name: &str, atlas: &image::DynamicImage, patch: Patch, center: Vec3, context: &Context) -> Self {
+    fn new_right(name: &str, atlas: &image::DynamicImage, patch: Patch, center: Vec3, context: &Context) -> Self {
         let Vector3 { x, y, z } = patch.half_size();
         let positions = vec![
             vec3(x, -y, z) + center,
@@ -144,7 +159,7 @@ impl Face {
         Self::new(name, atlas, patch.as_back(), positions, 2, context)
     }
 
-    fn new_right(name: &str, atlas: &image::DynamicImage, patch: Patch, center: Vec3, context: &Context) -> Self {
+    fn new_left(name: &str, atlas: &image::DynamicImage, patch: Patch, center: Vec3, context: &Context) -> Self {
         let Vector3 { x, y, z } = patch.half_size();
         let positions = vec![
             vec3(-x, -y, -z) + center,
@@ -236,6 +251,10 @@ struct Patch {
 impl Patch {
     const HEAD: Patch = Patch::new(8, 8, 8, 8, 8);
     const BODY: Patch = Patch::new(20, 20, 8, 12, 4);
+    const LEFT_LEG: Patch = Patch::new(20, 52, 4, 12, 4);
+    const LEFT_ARM: Patch = Patch::new(36, 52, 4, 12, 4);
+    const RIGHT_LEG: Patch = Patch::new(4, 20, 4, 12, 4);
+    const RIGHT_ARM: Patch = Patch::new(44, 20, 4, 12, 4);
 
     const fn new(x: u32, y: u32, width: u32, height: u32, depth: u32) -> Self {
         Self { x, y, width, height, depth }

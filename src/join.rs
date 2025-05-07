@@ -1,3 +1,3 @@
-pub fn join_all(paths: impl Iterator<Item = String>) -> anyhow::Result<()> {
+pub fn join_all(_paths: impl Iterator<Item = String>) -> anyhow::Result<()> {
     todo!();
 }
