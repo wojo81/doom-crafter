@@ -1,7 +1,9 @@
 use clap::{Parser, Subcommand};
 
 mod convert;
+mod doom;
 mod join;
+mod minecraft;
 
 use itertools::Itertools;
 
@@ -35,9 +37,15 @@ fn ignoring(ignore: Vec<String>) -> impl Fn(&String) -> bool {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse_from(wild::args());
 
-    let (commands, paths) = (args.commands, args.strings.into_iter().filter(ignoring(args.ignore)));
+    let (commands, strings) = (args.commands, args.strings.into_iter().filter(ignoring(args.ignore)));
     match commands {
-        Commands::Convert => Ok(convert::convert_all(paths.chunks(2).into_iter().map(|mut p| (p.next().unwrap(), p.next().unwrap())).into_iter())?),
-        Commands::Join => Ok(join::join_all(paths.into_iter())?),
+        Commands::Convert => Ok(convert::convert_all(
+            strings
+                .chunks(2)
+                .into_iter()
+                .map(|mut p| (p.next().unwrap(), p.next().unwrap().to_uppercase()))
+                .into_iter())?
+        ),
+        Commands::Join => Ok(join::join_all(strings.into_iter())?),
     }
 }
