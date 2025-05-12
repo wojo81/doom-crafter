@@ -6,7 +6,8 @@ pub fn consume_images(path: &str, name: &str, wad: &mut Wad) -> anyhow::Result<(
             "name = \"{}\"\nsprite = {}\nscale = 0.5\ngender = male",
             std::path::Path::new(path).file_name().unwrap().to_str().unwrap().to_string(),
             name
-        ).as_bytes().to_vec(),
+        )
+            .as_bytes().to_vec(),
         "S_SKIN"))?;
 
     let paths = std::fs::read_dir("out").map(|d| d.map(|p| p.unwrap().path().to_str().unwrap().to_string()))?.collect::<Vec<_>>();

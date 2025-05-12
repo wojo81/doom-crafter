@@ -2,7 +2,7 @@ use three_d::*;
 use tinywad::wad::Wad;
 
 pub fn convert_all(paths_and_names: impl Iterator<Item = (String, String)>) -> anyhow::Result<()> {
-    let viewport = Viewport::new_at_origo(192, 128);
+    let viewport = Viewport::new_at_origo(204, 128);
     let context = HeadlessContext::new()?;
     let depth = 35.0;
     let mut camera = Camera::new_perspective(
