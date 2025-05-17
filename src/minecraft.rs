@@ -5,8 +5,8 @@ use three_d::*;
 
 use std::f32::consts::PI;
 
-pub fn generate_images(path: &str, name: &str, viewport: &Viewport, context: &Context, camera: &mut Camera) -> anyhow::Result<()> {
-    let mut skin = Skin::load(image::open(&path)?, name, context);
+pub fn render_images(path: &str, sprite: &str, viewport: &Viewport, context: &Context, camera: &mut Camera) -> anyhow::Result<()> {
+    let mut skin = Skin::load(image::open(&path)?, sprite, context);
 
     let mut target_texture = Texture2D::new_empty::<[u8; 4]>(
         &context,
@@ -58,7 +58,7 @@ pub fn generate_images(path: &str, name: &str, viewport: &Viewport, context: &Co
                         height: viewport.height,
                         ..Default::default()
                     }
-                    .serialize(format!("out/{name}{frame_index}{rotation}.png"))?,
+                    .serialize(format!("temp/{sprite}{frame_index}{rotation}.png"))?,
                 )?;
 
                 camera.rotate_around_with_fixed_up(Vec3::zero(), -PI / 4.0, 0.0);
@@ -81,7 +81,7 @@ pub fn generate_images(path: &str, name: &str, viewport: &Viewport, context: &Co
                         height: viewport.height,
                         ..Default::default()
                     }
-                    .serialize(format!("out/{name}{frame_index}{rotation}.png"))?,
+                    .serialize(format!("temp/{sprite}{frame_index}{rotation}.png"))?,
                 )?;
             },
             _ => unreachable!()
