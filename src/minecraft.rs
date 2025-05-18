@@ -117,23 +117,44 @@ impl Skin {
     const LEFT_SHOULDER: Vec3 = vec3(-6.0, 4.0, 0.0);
 
     fn load(atlas: image::DynamicImage, name: &str, context: &Context) -> Self {
-        Self {
-            limbs: [
-                Limb::load(&atlas, name.to_string() + "Head",        Patch::HEAD,         vec3(0.0, 11.0, 0.0),   context),
-                Limb::load(&atlas, name.to_string() + "Torso",       Patch::TORSO,        vec3(0.0, 2.0, 0.0),    context),
-                Limb::load(&atlas, name.to_string() + "RightLeg",    Patch::RIGHT_LEG,    vec3(-2.0, -10.0, 0.0), context),
-                Limb::load(&atlas, name.to_string() + "RightArm",    Patch::RIGHT_ARM,    vec3(-6.0, 2.0, 0.0),   context),
-                Limb::load(&atlas, name.to_string() + "LeftLeg",     Patch::LEFT_LEG,     vec3(2.0, -10.0, 0.0),  context),
-                Limb::load(&atlas, name.to_string() + "LeftArm",     Patch::LEFT_ARM,     vec3(6.0, 2.0, 0.0),    context),
-            ],
-            trim: [
-                Trim::load(&atlas, name.to_string() + "Helmet",      Patch::HELMET,       vec3(0.0, 11.0, 0.0),   context),
-                Trim::load(&atlas, name.to_string() + "Shirt",       Patch::SHIRT,        vec3(0.0, 2.0, 0.0),    context),
-                Trim::load(&atlas, name.to_string() + "RightPants",  Patch::RIGHT_PANTS,  vec3(-2.0, -10.0, 0.0), context),
-                Trim::load(&atlas, name.to_string() + "RightSleeve", Patch::RIGHT_SLEEVE, vec3(-6.0, 2.0, 0.0),   context),
-                Trim::load(&atlas, name.to_string() + "LeftPants",   Patch::LEFT_PANTS,   vec3(2.0, -10.0, 0.0),  context),
-                Trim::load(&atlas, name.to_string() + "LeftSleeve",  Patch::LEFT_SLEEVE,  vec3(6.0, 2.0, 0.0),    context),
-            ],
+        if atlas.get_pixel(55, 20).0[3] < 10 {
+            Self {
+                limbs: [
+                    Limb::load(&atlas, name.to_string() + "Head",        Patch::HEAD,         vec3(0.0, 11.0, 0.0),   context),
+                    Limb::load(&atlas, name.to_string() + "Torso",       Patch::TORSO,        vec3(0.0, 2.0, 0.0),    context),
+                    Limb::load(&atlas, name.to_string() + "RightLeg",    Patch::RIGHT_LEG,    vec3(-2.0, -10.0, 0.0), context),
+                    Limb::load(&atlas, name.to_string() + "RightArm",    Patch::SLIM_RIGHT_ARM,    vec3(-5.5, 2.0, 0.0),   context),
+                    Limb::load(&atlas, name.to_string() + "LeftLeg",     Patch::LEFT_LEG,     vec3(2.0, -10.0, 0.0),  context),
+                    Limb::load(&atlas, name.to_string() + "LeftArm",     Patch::SLIM_LEFT_ARM,     vec3(5.5, 2.0, 0.0),    context),
+                ],
+                trim: [
+                    Trim::load(&atlas, name.to_string() + "Helmet",      Patch::HELMET,       vec3(0.0, 11.0, 0.0),   context),
+                    Trim::load(&atlas, name.to_string() + "Shirt",       Patch::SHIRT,        vec3(0.0, 2.0, 0.0),    context),
+                    Trim::load(&atlas, name.to_string() + "RightPants",  Patch::RIGHT_PANTS,  vec3(-2.0, -10.0, 0.0), context),
+                    Trim::load(&atlas, name.to_string() + "RightSleeve", Patch::SLIM_RIGHT_SLEEVE, vec3(-5.5, 2.0, 0.0),   context),
+                    Trim::load(&atlas, name.to_string() + "LeftPants",   Patch::LEFT_PANTS,   vec3(2.0, -10.0, 0.0),  context),
+                    Trim::load(&atlas, name.to_string() + "LeftSleeve",  Patch::SLIM_LEFT_SLEEVE,  vec3(5.5, 2.0, 0.0),    context),
+                ],
+            }
+        } else {
+            Self {
+                limbs: [
+                    Limb::load(&atlas, name.to_string() + "Head",        Patch::HEAD,         vec3(0.0, 11.0, 0.0),   context),
+                    Limb::load(&atlas, name.to_string() + "Torso",       Patch::TORSO,        vec3(0.0, 2.0, 0.0),    context),
+                    Limb::load(&atlas, name.to_string() + "RightLeg",    Patch::RIGHT_LEG,    vec3(-2.0, -10.0, 0.0), context),
+                    Limb::load(&atlas, name.to_string() + "RightArm",    Patch::RIGHT_ARM,    vec3(-6.0, 2.0, 0.0),   context),
+                    Limb::load(&atlas, name.to_string() + "LeftLeg",     Patch::LEFT_LEG,     vec3(2.0, -10.0, 0.0),  context),
+                    Limb::load(&atlas, name.to_string() + "LeftArm",     Patch::LEFT_ARM,     vec3(6.0, 2.0, 0.0),    context),
+                ],
+                trim: [
+                    Trim::load(&atlas, name.to_string() + "Helmet",      Patch::HELMET,       vec3(0.0, 11.0, 0.0),   context),
+                    Trim::load(&atlas, name.to_string() + "Shirt",       Patch::SHIRT,        vec3(0.0, 2.0, 0.0),    context),
+                    Trim::load(&atlas, name.to_string() + "RightPants",  Patch::RIGHT_PANTS,  vec3(-2.0, -10.0, 0.0), context),
+                    Trim::load(&atlas, name.to_string() + "RightSleeve", Patch::RIGHT_SLEEVE, vec3(-6.0, 2.0, 0.0),   context),
+                    Trim::load(&atlas, name.to_string() + "LeftPants",   Patch::LEFT_PANTS,   vec3(2.0, -10.0, 0.0),  context),
+                    Trim::load(&atlas, name.to_string() + "LeftSleeve",  Patch::LEFT_SLEEVE,  vec3(6.0, 2.0, 0.0),    context),
+                ],
+            }
         }
     }
 
@@ -582,6 +603,7 @@ struct Patch {
     width: u32,
     height: u32,
     depth: u32,
+    slim: bool,
 }
 
 impl Patch {
@@ -589,18 +611,26 @@ impl Patch {
     const TORSO: Patch = Patch::new(20, 20, 8, 12, 4);
     const RIGHT_LEG: Patch = Patch::new(4, 20, 4, 12, 4);
     const RIGHT_ARM: Patch = Patch::new(44, 20, 4, 12, 4);
+    const SLIM_RIGHT_ARM: Patch = Patch::new(44, 20, 3, 12, 4);
     const LEFT_LEG: Patch = Patch::new(20, 52, 4, 12, 4);
     const LEFT_ARM: Patch = Patch::new(36, 52, 4, 12, 4);
+    const SLIM_LEFT_ARM: Patch = Patch::new(36, 52, 3, 12, 4);
 
     const HELMET: Patch = Patch::new(40, 8, 8, 8, 8);
     const SHIRT: Patch = Patch::new(20, 36, 8, 12, 4);
     const RIGHT_PANTS: Patch = Patch::new(4, 36, 4, 12, 4);
     const RIGHT_SLEEVE: Patch = Patch::new(44, 36, 4, 12, 4);
+    const SLIM_RIGHT_SLEEVE: Patch = Patch::new(44, 36, 3, 12, 4);
     const LEFT_PANTS: Patch = Patch::new(4, 52, 4, 12, 4);
     const LEFT_SLEEVE: Patch = Patch::new(52, 52, 4, 12, 4);
+    const SLIM_LEFT_SLEEVE: Patch = Patch::new(52, 52, 3, 12, 4);
 
     const fn new(x: u32, y: u32, width: u32, height: u32, depth: u32) -> Self {
-        Self { x, y, width, height, depth }
+        Self { x, y, width, height, depth, slim: false }
+    }
+
+    const fn new_slim(x: u32, y: u32, width: u32, height: u32, depth: u32) -> Self {
+        Self { x, y, width, height, depth, slim: true }
     }
 
     fn half_size(&self) -> Vec3 {
