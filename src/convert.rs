@@ -8,6 +8,12 @@ pub struct SkinInfo {
     pub sprite: String,
 }
 
+impl SkinInfo {
+    pub const fn ref_array(&self) -> [&String; 3] {
+        [&self.name, &self.path, &self.sprite]
+    }
+}
+
 pub fn convert_all(infos: &Vec<SkinInfo>, file_name: String) -> anyhow::Result<()> {
     let viewport = Viewport::new_at_origo(204, 128);
     let context = HeadlessContext::new()?;
@@ -26,7 +32,15 @@ pub fn convert_all(infos: &Vec<SkinInfo>, file_name: String) -> anyhow::Result<(
     wad.set_kind(tinywad::wad::WadKind::Pwad);
     for SkinInfo { name, path, sprite } in infos {
         std::fs::create_dir("temp")?;
-        convert(&name, &path, &sprite, &mut wad, &viewport, &context, &mut camera)?;
+        convert(
+            &name,
+            &path,
+            &sprite,
+            &mut wad,
+            &viewport,
+            &context,
+            &mut camera,
+        )?;
         std::fs::remove_dir_all("temp")?;
     }
 
@@ -35,9 +49,16 @@ pub fn convert_all(infos: &Vec<SkinInfo>, file_name: String) -> anyhow::Result<(
     Ok(())
 }
 
-fn convert(name: &str, path: &str, sprite: &str,  wad: &mut tinywad::wad::Wad, viewport: &Viewport, context: &Context, camera: &mut Camera) -> anyhow::Result<()> {
+fn convert(
+    name: &str,
+    path: &str,
+    sprite: &str,
+    wad: &mut tinywad::wad::Wad,
+    viewport: &Viewport,
+    context: &Context,
+    camera: &mut Camera,
+) -> anyhow::Result<()> {
     crate::minecraft::render_images(path, sprite, viewport, context, camera)?;
     crate::doom::consume_images(name, sprite, wad)?;
     Ok(())
 }
-

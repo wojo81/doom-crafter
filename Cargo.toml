@@ -12,4 +12,9 @@ tinywad = "*"
 wild = "2.2.1"
 three-d = { version = "*", features = ["headless"] }
 three-d-asset = { version = "*", features = ["png"] }
-itertools = "*"
+color-eyre = "0.6.3"
+crossterm = "0.28.1"
+ratatui = "0.29.0"
+strum = "*"
+tui-prompts = "*"
+gag = "1.0.0"
