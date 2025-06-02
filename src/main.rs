@@ -241,7 +241,7 @@ impl Context for ItemPrompt {
     fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
         let popup = Block::bordered();
         let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
-            .split(popup_area(frame.area(), 50, 50));
+            .split(popup_area(frame.area(), 70, 70));
         frame.render_widget(Clear, areas[0]);
         frame.render_widget(popup, areas[0]);
         frame.render_widget(Clear, areas[1]);
@@ -430,7 +430,7 @@ impl Context for ConvertPrompt {
     fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
         let popup = Block::bordered();
         let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
-            .split(popup_area(frame.area(), 30, 30));
+            .split(popup_area(frame.area(), 70, 70));
         frame.render_widget(Clear, areas[0]);
         frame.render_widget(popup, areas[0]);
         frame.render_widget(Clear, areas[1]);
@@ -471,7 +471,7 @@ impl Context for Success {
     fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
         let popup = Block::bordered();
         let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
-            .split(popup_area(frame.area(), 30, 30));
+            .split(popup_area(frame.area(), 70, 70));
 
         frame.render_widget(Clear, areas[0]);
         frame.render_widget(popup, areas[0]);

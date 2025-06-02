@@ -353,6 +353,7 @@ struct Skin {
     trim: [Trim; 6],
 }
 
+#[allow(dead_code)]
 impl Skin {
     const HEAD: usize = 0;
     const TORSO: usize = 1;
@@ -831,7 +832,6 @@ struct Trim {
 
 impl Trim {
     const UNIT: f32 = 1.1;
-    const SCALE: Vec3 = vec3(Self::UNIT, Self::UNIT, Self::UNIT);
 
     fn load(
         atlas: &image::DynamicImage,
@@ -1106,7 +1106,6 @@ struct Patch {
     width: u32,
     height: u32,
     depth: u32,
-    slim: bool,
 }
 
 impl Patch {
@@ -1135,18 +1134,6 @@ impl Patch {
             width,
             height,
             depth,
-            slim: false,
-        }
-    }
-
-    const fn new_slim(x: u32, y: u32, width: u32, height: u32, depth: u32) -> Self {
-        Self {
-            x,
-            y,
-            width,
-            height,
-            depth,
-            slim: true,
         }
     }
 
