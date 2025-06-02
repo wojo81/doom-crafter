@@ -2,27 +2,28 @@ use three_d::*;
 use tinywad::models::operation::WadOp;
 
 #[derive(Default, Clone)]
-pub struct SkinInfo {
+pub struct SkinItem {
     pub name: String,
     pub path: String,
     pub sprite: String,
+    pub mugshot: String,
 }
 
-impl SkinInfo {
-    pub const fn ref_array(&self) -> [&String; 3] {
-        [&self.name, &self.path, &self.sprite]
+impl SkinItem {
+    pub const fn ref_array(&self) -> [&String; 4] {
+        [&self.name, &self.path, &self.sprite, &self.mugshot]
     }
 }
 
-pub fn convert_all(infos: &Vec<SkinInfo>, file_name: String) -> anyhow::Result<()> {
+pub fn convert_all(infos: &Vec<SkinItem>, file_name: String) -> anyhow::Result<()> {
     let viewport = Viewport::new_at_origo(204, 128);
     let context = HeadlessContext::new()?;
     let depth = 35.0;
     let mut camera = Camera::new_perspective(
         viewport,
-        vec3(0.0, 0.0, depth),
-        vec3(0.0, 0.0, 0.0),
-        vec3(0.0, 1.0, 0.0),
+        Vec3::unit_z() * depth,
+        Vec3::zero(),
+        Vec3::unit_y(),
         degrees(60.0),
         0.1,
         100.0,
@@ -30,18 +31,30 @@ pub fn convert_all(infos: &Vec<SkinInfo>, file_name: String) -> anyhow::Result<(
 
     let mut wad = tinywad::wad::Wad::new();
     wad.set_kind(tinywad::wad::WadKind::Pwad);
-    for SkinInfo { name, path, sprite } in infos {
-        std::fs::create_dir("temp")?;
+    for SkinItem {
+        name,
+        path,
+        sprite,
+        mugshot,
+    } in infos
+    {
+        let temp = std::path::Path::new("temp");
+        if temp.exists() {
+            std::fs::remove_dir_all(temp)?;
+        }
+        std::fs::create_dir_all(temp.join("sprites"))?;
+        std::fs::create_dir(temp.join("mugshots"))?;
         convert(
             &name,
             &path,
             &sprite,
+            &mugshot,
             &mut wad,
             &viewport,
             &context,
             &mut camera,
         )?;
-        std::fs::remove_dir_all("temp")?;
+        std::fs::remove_dir_all(temp)?;
     }
 
     wad.save(&file_name);
@@ -53,12 +66,13 @@ fn convert(
     name: &str,
     path: &str,
     sprite: &str,
+    mugshot: &str,
     wad: &mut tinywad::wad::Wad,
     viewport: &Viewport,
     context: &Context,
     camera: &mut Camera,
 ) -> anyhow::Result<()> {
-    crate::minecraft::render_images(path, sprite, viewport, context, camera)?;
-    crate::doom::consume_images(name, sprite, wad)?;
+    crate::minecraft::render_images(path, sprite, mugshot, viewport, context, camera)?;
+    crate::doom::consume_images(name, sprite, mugshot, wad)?;
     Ok(())
 }

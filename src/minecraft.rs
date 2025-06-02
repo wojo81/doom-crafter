@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use image::GenericImageView;
 use three_d::*;
 
@@ -8,13 +6,12 @@ use std::f32::consts::PI;
 pub fn render_images(
     path: &str,
     sprite: &str,
+    mugshot: &str,
     viewport: &Viewport,
     context: &Context,
     camera: &mut Camera,
 ) -> anyhow::Result<()> {
-    let mut skin = Skin::load(image::open(&path)?, sprite, context);
-
-    let mut target_texture = Texture2D::new_empty::<[u8; 4]>(
+    let mut target = Texture2D::new_empty::<[u8; 4]>(
         &context,
         viewport.width,
         viewport.height,
@@ -24,16 +21,52 @@ pub fn render_images(
         Wrapping::ClampToEdge,
         Wrapping::ClampToEdge,
     );
-
-    let mut depth_texture = DepthTexture2D::new::<f32>(
+    let mut depth = DepthTexture2D::new::<f32>(
         &context,
         viewport.width,
         viewport.height,
         Wrapping::ClampToEdge,
         Wrapping::ClampToEdge,
     );
+    let light = AmbientLight::new(context, 1.0, Srgba::WHITE);
+    let delta = 10.0;
 
-    let ambient = AmbientLight::new(context, 1.0, Srgba::WHITE);
+    render_sprites(
+        path,
+        sprite,
+        viewport,
+        context,
+        &mut target,
+        &mut depth,
+        camera,
+        &light,
+    )?;
+    camera.translate(Vec3::unit_z() * delta);
+    render_mugshots(
+        path,
+        mugshot,
+        viewport,
+        context,
+        &mut target,
+        &mut depth,
+        camera,
+        &light,
+    )?;
+    camera.translate(Vec3::unit_z() * -delta);
+    Ok(())
+}
+
+pub fn render_sprites(
+    path: &str,
+    sprite: &str,
+    viewport: &Viewport,
+    context: &Context,
+    target: &mut Texture2D,
+    depth: &mut DepthTexture2D,
+    camera: &mut Camera,
+    light: &AmbientLight,
+) -> anyhow::Result<()> {
+    let mut skin = Skin::load(image::open(&path)?, sprite, context);
 
     for frame_index in 'A'..='W' {
         match frame_index {
@@ -41,7 +74,7 @@ pub fn render_images(
             'B' => skin.flap_right_arm_and_leg(),
             'D' => skin.flap_left_arm_and_leg(),
             'E' | 'F' => skin.punch(frame_index),
-            'G' => skin.apply_red(),
+            'G' => skin.apply_red(70),
             'H'..='N' => skin.rotate_around(
                 vec3(0.0, -11.0, 0.0),
                 -Vec3::unit_z(),
@@ -58,71 +91,259 @@ pub fn render_images(
         match frame_index {
             'A'..='G' => {
                 for rotation in 1..=8 {
-                    let pixels = RenderTarget::new(
-                        target_texture.as_color_target(None),
-                        depth_texture.as_depth_target(),
-                    )
-                    .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
-                    .render(
-                        &camera,
-                        skin.limbs
-                            .iter()
-                            .flat_map(|p| &p.faces)
-                            .map(|f| &f.model)
-                            .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
-                        &[&ambient],
-                    )
-                    .read_color();
-
-                    use three_d_asset::io::Serialize;
-
-                    three_d_asset::io::save(
-                        &CpuTexture {
-                            data: TextureData::RgbaU8(pixels),
-                            width: viewport.width,
-                            height: viewport.height,
-                            ..Default::default()
-                        }
-                        .serialize(format!("temp/{sprite}{frame_index}{rotation}.png"))?,
+                    render_sprite(
+                        &skin,
+                        sprite,
+                        frame_index,
+                        rotation,
+                        viewport,
+                        target,
+                        depth,
+                        camera,
+                        &light,
                     )?;
-
                     camera.rotate_around_with_fixed_up(Vec3::zero(), -PI / 4.0, 0.0);
                 }
             }
             'H'..='W' => {
                 let rotation = 0;
 
-                let pixels = RenderTarget::new(
-                    target_texture.as_color_target(None),
-                    depth_texture.as_depth_target(),
-                )
-                .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
-                .render(
-                    &camera,
-                    skin.limbs
-                        .iter()
-                        .flat_map(|p| &p.faces)
-                        .map(|f| &f.model)
-                        .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
-                    &[&ambient],
-                )
-                .read_color();
-
-                use three_d_asset::io::Serialize;
-
-                three_d_asset::io::save(
-                    &CpuTexture {
-                        data: TextureData::RgbaU8(pixels),
-                        width: viewport.width,
-                        height: viewport.height,
-                        ..Default::default()
-                    }
-                    .serialize(format!("temp/{sprite}{frame_index}{rotation}.png"))?,
+                render_sprite(
+                    &skin,
+                    sprite,
+                    frame_index,
+                    rotation,
+                    viewport,
+                    target,
+                    depth,
+                    camera,
+                    &light,
                 )?;
             }
             _ => unreachable!(),
         }
     }
+
+    Ok(())
+}
+
+fn render_sprite(
+    skin: &Skin,
+    sprite: &str,
+    frame_index: char,
+    rotation: i32,
+    viewport: &Viewport,
+    target: &mut Texture2D,
+    depth: &mut DepthTexture2D,
+    camera: &Camera,
+    light: &AmbientLight,
+) -> anyhow::Result<()> {
+    let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
+        .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
+        .render(
+            &camera,
+            skin.limbs
+                .iter()
+                .flat_map(|p| &p.faces)
+                .map(|f| &f.model)
+                .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
+            &[&light],
+        )
+        .read_color();
+
+    use three_d_asset::io::Serialize;
+
+    three_d_asset::io::save(
+        &CpuTexture {
+            data: TextureData::RgbaU8(pixels),
+            width: viewport.width,
+            height: viewport.height,
+            ..Default::default()
+        }
+        .serialize(
+            std::path::Path::new("temp")
+                .join("sprites")
+                .join(format!("{sprite}{frame_index}{rotation}.png")),
+        )?,
+    )?;
+
+    Ok(())
+}
+
+pub fn render_mugshots(
+    path: &str,
+    mugshot: &str,
+    viewport: &Viewport,
+    context: &Context,
+    target: &mut Texture2D,
+    depth: &mut DepthTexture2D,
+    camera: &mut Camera,
+    light: &AmbientLight,
+) -> anyhow::Result<()> {
+    let mut head = Limb::load(
+        &image::open(path)?,
+        "head".into(),
+        Patch::HEAD,
+        Vec3::zero(),
+        context,
+    );
+    let mut helmet = Trim::load(
+        &image::open(path)?,
+        "trim".into(),
+        Patch::HELMET,
+        Vec3::zero(),
+        context,
+    );
+    let suffixes = ["DEAD", "EVL", "GOD", "KILL", "OUCH", "ST", "TL", "TR"];
+
+    for suffix in suffixes {
+        match suffix {
+            "DEAD" => {
+                let color = Srgba::new(64, 64, 64, 255);
+                head.apply_color(color);
+                helmet.apply_color(color);
+            }
+            "EVL" | "KILL" => {
+                let angle = -15.0;
+                head.rotate_around(Vec3::zero(), &[(Vec3::unit_x(), angle)]);
+                helmet.rotate_around(Vec3::zero(), &[(Vec3::unit_x(), angle)]);
+            }
+            "GOD" => {
+                let color = Srgba::new(255, 215, 0, 255);
+                head.apply_color(color);
+                helmet.apply_color(color);
+            }
+            "OUCH" => {
+                let angle = 15.0;
+                head.rotate_around(Vec3::zero(), &[(Vec3::unit_x(), angle)]);
+                helmet.rotate_around(Vec3::zero(), &[(Vec3::unit_x(), angle)]);
+            }
+            "ST" => (),
+            "TL" => {
+                let angle = -30.0;
+                head.rotate_around(Vec3::zero(), &[(Vec3::unit_y(), angle)]);
+                helmet.rotate_around(Vec3::zero(), &[(Vec3::unit_y(), angle)]);
+            }
+            "TR" => {
+                let angle = 30.0;
+                head.rotate_around(Vec3::zero(), &[(Vec3::unit_y(), angle)]);
+                helmet.rotate_around(Vec3::zero(), &[(Vec3::unit_y(), angle)]);
+            }
+            _ => unreachable!(),
+        }
+
+        match suffix {
+            "DEAD" | "GOD" => render_mugshot(
+                &head, &helmet, mugshot, suffix, 0, viewport, target, depth, camera, light,
+            )?,
+            "EVL" | "KILL" | "OUCH" => {
+                for i in 0..5 {
+                    let saturation = 255 / (i + 1);
+                    head.apply_red(saturation);
+                    helmet.apply_red(saturation);
+                    render_mugshot(
+                        &head, &helmet, mugshot, suffix, i, viewport, target, depth, camera, light,
+                    )?;
+                }
+                let axis_angle = [(Vec3::unit_x(), 0.0)];
+                head.rotate_around(Vec3::zero(), &axis_angle);
+                helmet.rotate_around(Vec3::zero(), &axis_angle);
+            }
+            "ST" => {
+                for x in 0..5 {
+                    let saturation = 255 / (x + 1);
+                    head.apply_red(saturation);
+                    helmet.apply_red(saturation);
+                    for y in 0..3 {
+                        let angle = match y {
+                            0 => 15.0,
+                            1 => 0.0,
+                            2 => -15.0,
+                            _ => unreachable!(),
+                        };
+                        let axis_angle = [(Vec3::unit_y(), angle)];
+                        head.rotate_around(Vec3::zero(), &axis_angle);
+                        helmet.rotate_around(Vec3::zero(), &axis_angle);
+                        render_mugshot(
+                            &head,
+                            &helmet,
+                            mugshot,
+                            &format!("{suffix}{x}"),
+                            y,
+                            viewport,
+                            target,
+                            depth,
+                            camera,
+                            light,
+                        )?;
+                    }
+                }
+            }
+            "TL" | "TR" => {
+                for i in 0..5 {
+                    let saturation = 255 / (i + 1);
+                    head.apply_red(saturation);
+                    helmet.apply_red(saturation);
+                    render_mugshot(
+                        &head,
+                        &helmet,
+                        mugshot,
+                        &format!("{suffix}{i}"),
+                        0,
+                        viewport,
+                        target,
+                        depth,
+                        camera,
+                        light,
+                    )?;
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    Ok(())
+}
+
+fn render_mugshot(
+    head: &Limb,
+    helmet: &Trim,
+    mugshot: &str,
+    suffix: &str,
+    index: u8,
+    viewport: &Viewport,
+    target: &mut Texture2D,
+    depth: &mut DepthTexture2D,
+    camera: &Camera,
+    light: &AmbientLight,
+) -> anyhow::Result<()> {
+    let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
+        .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
+        .render(
+            &camera,
+            head.faces
+                .iter()
+                .map(|f| &f.model)
+                .chain(helmet.texels.iter().map(|t| &t.model)),
+            &[&light],
+        )
+        .read_color();
+
+    use three_d_asset::io::Serialize;
+
+    three_d_asset::io::save(
+        &CpuTexture {
+            data: TextureData::RgbaU8(pixels),
+            width: viewport.width,
+            height: viewport.height,
+            ..Default::default()
+        }
+        .serialize(
+            std::path::Path::new("temp")
+                .join("mugshots")
+                .join(format!("{mugshot}{suffix}{index}.png")),
+        )?,
+    )?;
 
     Ok(())
 }
@@ -384,17 +605,13 @@ impl Skin {
         self.trim[Self::RIGHT_ARM].rotate_around(Self::RIGHT_SHOULDER, &axes_angles);
     }
 
-    fn apply_red(&mut self) {
+    fn apply_red(&mut self, saturation: u8) {
         self.reset();
         for limb in self.limbs.iter_mut() {
-            for face in limb.faces.iter_mut() {
-                face.model.material.color = Srgba::new(255, 70, 70, 255);
-            }
+            limb.apply_red(saturation);
         }
         for trim in self.trim.iter_mut() {
-            for texel in trim.texels.iter_mut() {
-                texel.model.material.color = Srgba::new(255, 70, 70, 255);
-            }
+            trim.apply_red(saturation);
         }
     }
 
@@ -459,6 +676,16 @@ impl Limb {
             })
             * Mat4::from_translation(-pivot);
         self.set_transformation(rotation);
+    }
+
+    fn apply_red(&mut self, saturation: u8) {
+        self.apply_color(Srgba::new(255, saturation, saturation, 255))
+    }
+
+    fn apply_color(&mut self, color: Srgba) {
+        for face in self.faces.iter_mut() {
+            face.model.material.color = color;
+        }
     }
 }
 
@@ -756,6 +983,16 @@ impl Trim {
             })
             * Mat4::from_translation(-pivot);
         self.set_transformation(rotation);
+    }
+
+    fn apply_red(&mut self, saturation: u8) {
+        self.apply_color(Srgba::new(255, saturation, saturation, 255))
+    }
+
+    fn apply_color(&mut self, color: Srgba) {
+        for texel in self.texels.iter_mut() {
+            texel.model.material.color = color;
+        }
     }
 }
 
