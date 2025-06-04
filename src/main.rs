@@ -1,5 +1,6 @@
 mod convert;
 mod doom;
+mod fists;
 mod minecraft;
 
 use crate::convert::*;
@@ -412,10 +413,21 @@ impl Context for ConvertPrompt {
                 KeyCode::Esc => return None,
                 KeyCode::Enter => {
                     if self.file_name.status().is_done() {
-                        let _gag = gag::Gag::stdout().unwrap();
-                        crate::convert::convert_all(&app.items, self.file_name.value().into())
+                        if let Some(acc) = crate::fists::get_acc() {
+                            return Some(Box::new(FistsConfirm::new(
+                                self.file_name.value().into(),
+                                acc,
+                            )));
+                        } else {
+                            let _gag = gag::Gag::stdout().unwrap();
+                            crate::convert::convert_all(
+                                &app.items,
+                                self.file_name.value().into(),
+                                None,
+                            )
                             .unwrap();
-                        return Some(Box::new(Success::new(self.file_name.value().into())));
+                            return Some(Box::new(Success::new(self.file_name.value().into())));
+                        }
                     }
                 }
                 _ => {
@@ -444,6 +456,52 @@ impl Context for ConvertPrompt {
     }
 }
 
+struct FistsConfirm {
+    file_name: String,
+    acc: std::path::PathBuf,
+}
+
+impl Context for FistsConfirm {
+    fn handle_event(self: Box<Self>, app: &mut App, event: Event) -> Option<Box<dyn Context>> {
+        if let Event::Key(key) = event {
+            match key.code {
+                KeyCode::Esc => return None,
+                KeyCode::Char('y') => {
+                    let _gag = gag::Gag::stdout().unwrap();
+                    crate::convert::convert_all(&app.items, self.file_name.clone(), Some(self.acc))
+                        .unwrap();
+                    return Some(Box::new(Success::new_with_fists(self.file_name.clone())));
+                }
+                KeyCode::Char('n') => {
+                    let _gag = gag::Gag::stdout().unwrap();
+                    crate::convert::convert_all(&app.items, self.file_name.clone(), None).unwrap();
+                    return Some(Box::new(Success::new(self.file_name)));
+                }
+                _ => (),
+            }
+        }
+        Some(self)
+    }
+
+    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
+        let popup = Paragraph::new("ACC detected: Do you want to generate fists?")
+            .centered()
+            .block(Block::bordered());
+        let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
+            .split(popup_area(frame.area(), 70, 70));
+        frame.render_widget(Clear, areas[0]);
+        frame.render_widget(Clear, areas[1]);
+        frame.render_widget(popup, areas[0]);
+        frame.render_widget(Line::from("(y) Yes (n) No").right_aligned(), areas[1]);
+    }
+}
+
+impl FistsConfirm {
+    fn new(file_name: String, acc: std::path::PathBuf) -> Self {
+        Self { file_name, acc }
+    }
+}
+
 impl ConvertPrompt {
     fn validate(&mut self) {
         *self.file_name.status_mut() = Status::Aborted;
@@ -458,6 +516,7 @@ impl ConvertPrompt {
 
 struct Success {
     file_name: String,
+    fists_file_name: Option<String>,
 }
 
 impl Context for Success {
@@ -476,7 +535,7 @@ impl Context for Success {
         frame.render_widget(Clear, areas[0]);
         frame.render_widget(popup, areas[0]);
         frame.render_widget(Clear, areas[1]);
-        frame.render_widget(Line::from("(Any) Quit").right_aligned(), areas[1]);
+        frame.render_widget(Line::from("(any) Quit").right_aligned(), areas[1]);
 
         let area = Rect::new(
             areas[0].x,
@@ -488,12 +547,29 @@ impl Context for Success {
             Line::from(format!("'{}' created successfully!", self.file_name)).centered(),
             area,
         );
+        if let Some(fists_file_name) = self.fists_file_name.clone() {
+            let area = Rect::new(area.x, area.y + 1, area.width, 1);
+            frame.render_widget(
+                Line::from(format!("'{}' created successfully!", fists_file_name)).centered(),
+                area,
+            );
+        }
     }
 }
 
 impl Success {
     fn new(file_name: String) -> Self {
-        Self { file_name }
+        Self {
+            file_name,
+            fists_file_name: None,
+        }
+    }
+
+    fn new_with_fists(file_name: String) -> Self {
+        Self {
+            file_name: file_name.clone(),
+            fists_file_name: Some(file_name.replace('.', "_fists.")),
+        }
     }
 }
 

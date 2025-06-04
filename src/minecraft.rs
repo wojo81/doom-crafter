@@ -189,7 +189,7 @@ pub fn render_mugshots(
     );
     let mut helmet = Trim::load(
         &image::open(path)?,
-        "trim".into(),
+        "helmet".into(),
         Patch::HELMET,
         Vec3::zero(),
         context,
@@ -634,13 +634,13 @@ impl Skin {
     }
 }
 
-struct Limb {
-    faces: [Face; 6],
-    matrix: Mat4,
+pub struct Limb {
+    pub faces: [Face; 6],
+    pub matrix: Mat4,
 }
 
 impl Limb {
-    fn load(
+    pub fn load(
         atlas: &image::DynamicImage,
         name: String,
         patch: Patch,
@@ -669,7 +669,7 @@ impl Limb {
         }
     }
 
-    fn rotate_around(&mut self, pivot: Vec3, axes_angles: &[(Vec3, f32)]) {
+    pub fn rotate_around(&mut self, pivot: Vec3, axes_angles: &[(Vec3, f32)]) {
         let rotation = axes_angles
             .into_iter()
             .fold(Mat4::from_translation(pivot), |matrix, (axis, angle)| {
@@ -690,8 +690,8 @@ impl Limb {
     }
 }
 
-struct Face {
-    model: Gm<Mesh, ColorMaterial>,
+pub struct Face {
+    pub model: Gm<Mesh, ColorMaterial>,
 }
 
 impl Face {
@@ -825,15 +825,15 @@ impl Face {
     }
 }
 
-struct Trim {
-    texels: Vec<Texel>,
-    matrix: Mat4,
+pub struct Trim {
+    pub texels: Vec<Texel>,
+    pub matrix: Mat4,
 }
 
 impl Trim {
     const UNIT: f32 = 1.1;
 
-    fn load(
+    pub fn load(
         atlas: &image::DynamicImage,
         name: String,
         patch: Patch,
@@ -975,7 +975,7 @@ impl Trim {
         }
     }
 
-    fn rotate_around(&mut self, pivot: Vec3, axes_angles: &[(Vec3, f32)]) {
+    pub fn rotate_around(&mut self, pivot: Vec3, axes_angles: &[(Vec3, f32)]) {
         let rotation = axes_angles
             .into_iter()
             .fold(Mat4::from_translation(pivot), |matrix, (axis, angle)| {
@@ -996,8 +996,8 @@ impl Trim {
     }
 }
 
-struct Texel {
-    model: Gm<Mesh, ColorMaterial>,
+pub struct Texel {
+    pub model: Gm<Mesh, ColorMaterial>,
 }
 
 impl Texel {
@@ -1100,7 +1100,7 @@ enum Direction {
 }
 
 #[derive(Clone, Copy)]
-struct Patch {
+pub struct Patch {
     x: u32,
     y: u32,
     width: u32,
@@ -1109,23 +1109,23 @@ struct Patch {
 }
 
 impl Patch {
-    const HEAD: Patch = Patch::new(8, 8, 8, 8, 8);
-    const TORSO: Patch = Patch::new(20, 20, 8, 12, 4);
-    const RIGHT_LEG: Patch = Patch::new(4, 20, 4, 12, 4);
-    const RIGHT_ARM: Patch = Patch::new(44, 20, 4, 12, 4);
-    const SLIM_RIGHT_ARM: Patch = Patch::new(44, 20, 3, 12, 4);
-    const LEFT_LEG: Patch = Patch::new(20, 52, 4, 12, 4);
-    const LEFT_ARM: Patch = Patch::new(36, 52, 4, 12, 4);
-    const SLIM_LEFT_ARM: Patch = Patch::new(36, 52, 3, 12, 4);
+    pub const HEAD: Patch = Patch::new(8, 8, 8, 8, 8);
+    pub const TORSO: Patch = Patch::new(20, 20, 8, 12, 4);
+    pub const RIGHT_LEG: Patch = Patch::new(4, 20, 4, 12, 4);
+    pub const RIGHT_ARM: Patch = Patch::new(44, 20, 4, 12, 4);
+    pub const SLIM_RIGHT_ARM: Patch = Patch::new(44, 20, 3, 12, 4);
+    pub const LEFT_LEG: Patch = Patch::new(20, 52, 4, 12, 4);
+    pub const LEFT_ARM: Patch = Patch::new(36, 52, 4, 12, 4);
+    pub const SLIM_LEFT_ARM: Patch = Patch::new(36, 52, 3, 12, 4);
 
-    const HELMET: Patch = Patch::new(40, 8, 8, 8, 8);
-    const SHIRT: Patch = Patch::new(20, 36, 8, 12, 4);
-    const RIGHT_PANTS: Patch = Patch::new(4, 36, 4, 12, 4);
-    const RIGHT_SLEEVE: Patch = Patch::new(44, 36, 4, 12, 4);
-    const SLIM_RIGHT_SLEEVE: Patch = Patch::new(44, 36, 3, 12, 4);
-    const LEFT_PANTS: Patch = Patch::new(4, 52, 4, 12, 4);
-    const LEFT_SLEEVE: Patch = Patch::new(52, 52, 4, 12, 4);
-    const SLIM_LEFT_SLEEVE: Patch = Patch::new(52, 52, 3, 12, 4);
+    pub const HELMET: Patch = Patch::new(40, 8, 8, 8, 8);
+    pub const SHIRT: Patch = Patch::new(20, 36, 8, 12, 4);
+    pub const RIGHT_PANTS: Patch = Patch::new(4, 36, 4, 12, 4);
+    pub const RIGHT_SLEEVE: Patch = Patch::new(44, 36, 4, 12, 4);
+    pub const SLIM_RIGHT_SLEEVE: Patch = Patch::new(44, 36, 3, 12, 4);
+    pub const LEFT_PANTS: Patch = Patch::new(4, 52, 4, 12, 4);
+    pub const LEFT_SLEEVE: Patch = Patch::new(52, 52, 4, 12, 4);
+    pub const SLIM_LEFT_SLEEVE: Patch = Patch::new(52, 52, 3, 12, 4);
 
     const fn new(x: u32, y: u32, width: u32, height: u32, depth: u32) -> Self {
         Self {
