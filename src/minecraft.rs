@@ -793,13 +793,15 @@ impl Face {
         let sub_image =
             image::imageops::crop_imm(atlas, patch.x, patch.y, patch.width, patch.height)
                 .to_image();
-        let data = TextureData::RgbaU8(
-            sub_image
-                .into_raw()
-                .chunks(4)
-                .map(|p| [p[0], p[1], p[2], p[3]])
-                .collect(),
-        );
+        let mut linear_data = Vec::with_capacity((sub_image.width() * sub_image.height()) as usize);
+        for pixel in sub_image.pixels() {
+            let r = correct_gamma(pixel[0]);
+            let g = correct_gamma(pixel[1]);
+            let b = correct_gamma(pixel[2]);
+            let a = pixel[3];
+            linear_data.push([r, g, b, a]);
+        }
+        let data = TextureData::RgbaU8(linear_data);
         let texture = CpuTexture {
             name: format!("{name}_{index}"),
             data,
@@ -823,6 +825,16 @@ impl Face {
 
         Self { model }
     }
+}
+
+fn correct_gamma(channel: u8) -> u8 {
+    let channel = channel as f32 / 255.0;
+    let corrected_channel = if channel <= 0.04045 {
+        channel / 12.92
+    } else {
+        ((channel + 0.055) / 1.055).powf(2.4)
+    };
+    (corrected_channel * 255.0) as u8
 }
 
 pub struct Trim {
@@ -1063,7 +1075,13 @@ impl Texel {
             uvs: Some(uvs),
             ..Default::default()
         };
-
+        let pixel = {
+            let r = correct_gamma(pixel[0]);
+            let g = correct_gamma(pixel[1]);
+            let b = correct_gamma(pixel[2]);
+            let a = pixel[3];
+            [r, g, b, a]
+        };
         let data = TextureData::RgbaU8(vec![pixel]);
         let texture = CpuTexture {
             name: format!("{name}"),
