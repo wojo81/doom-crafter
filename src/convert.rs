@@ -78,6 +78,15 @@ pub fn convert_all(
             )?;
         }
         std::fs::remove_dir_all(temp)?;
+        camera = Camera::new_perspective(
+            viewport,
+            Vec3::unit_z() * depth,
+            Vec3::zero(),
+            Vec3::unit_y(),
+            degrees(60.0),
+            0.1,
+            100.0,
+        );
     }
 
     wad.save(&file_name);
