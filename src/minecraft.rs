@@ -41,6 +41,17 @@ pub fn render_images(
         camera,
         &light,
     )?;
+    let mut sprite = sprite.to_string();
+    sprite.replace_range(3..4, "[");
+    render_crouch_sprites(
+        path,
+        &sprite,
+        viewport,
+        context,
+        &mut target,
+        &mut depth,
+        camera,
+    )?;
     camera.translate(Vec3::unit_z() * delta);
     render_mugshots(
         path,
@@ -100,7 +111,6 @@ pub fn render_sprites(
                         target,
                         depth,
                         camera,
-                        &light,
                     )?;
                     camera.rotate_around_with_fixed_up(Vec3::zero(), -PI / 4.0, 0.0);
                 }
@@ -117,7 +127,6 @@ pub fn render_sprites(
                     target,
                     depth,
                     camera,
-                    &light,
                 )?;
             }
             _ => unreachable!(),
@@ -136,7 +145,6 @@ fn render_sprite(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &Camera,
-    light: &AmbientLight,
 ) -> anyhow::Result<()> {
     let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
         .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
@@ -147,7 +155,7 @@ fn render_sprite(
                 .flat_map(|p| &p.faces)
                 .map(|f| &f.model)
                 .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
-            &[&light],
+            &[],
         )
         .read_color();
 
@@ -163,6 +171,87 @@ fn render_sprite(
         .serialize(
             std::path::Path::new("temp")
                 .join("sprites")
+                .join(format!("{sprite}{frame_index}{rotation}.png")),
+        )?,
+    )?;
+
+    Ok(())
+}
+
+pub fn render_crouch_sprites(
+    path: &str,
+    sprite: &str,
+    viewport: &Viewport,
+    context: &Context,
+    target: &mut Texture2D,
+    depth: &mut DepthTexture2D,
+    camera: &mut Camera,
+) -> anyhow::Result<()> {
+    let mut skin = Skin::load_crouched(image::open(&path)?, sprite, context);
+
+    for frame_index in 'A'..='G' {
+        match frame_index {
+            'A' | 'C' => skin.reset_crouched(),
+            'B' => skin.flap_right_arm_and_leg_crouched(),
+            'D' => skin.flap_left_arm_and_leg_crouched(),
+            'E' | 'F' => skin.punch_crouched(frame_index),
+            'G' => skin.apply_red_crouched(70),
+            _ => unreachable!(),
+        }
+
+        for rotation in 1..=8 {
+            render_crouch_sprite(
+                &skin,
+                sprite,
+                frame_index,
+                rotation,
+                viewport,
+                target,
+                depth,
+                camera,
+            )?;
+            camera.rotate_around_with_fixed_up(Vec3::zero(), -PI / 4.0, 0.0);
+        }
+    }
+
+    Ok(())
+}
+
+fn render_crouch_sprite(
+    skin: &Skin,
+    sprite: &str,
+    frame_index: char,
+    rotation: i32,
+    viewport: &Viewport,
+    target: &mut Texture2D,
+    depth: &mut DepthTexture2D,
+    camera: &Camera,
+) -> anyhow::Result<()> {
+    let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
+        .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
+        .render(
+            &camera,
+            skin.limbs
+                .iter()
+                .flat_map(|p| &p.faces)
+                .map(|f| &f.model)
+                .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
+            &[],
+        )
+        .read_color();
+
+    use three_d_asset::io::Serialize;
+
+    three_d_asset::io::save(
+        &CpuTexture {
+            data: TextureData::RgbaU8(pixels),
+            width: viewport.width,
+            height: viewport.height,
+            ..Default::default()
+        }
+        .serialize(
+            std::path::Path::new("temp")
+                .join("crouch_sprites")
                 .join(format!("{sprite}{frame_index}{rotation}.png")),
         )?,
     )?;
@@ -374,6 +463,15 @@ impl Skin {
     const LEFT_JOINT: Vec3 = vec3(-6.0, -4.0, 0.0);
     const LEFT_SHOULDER: Vec3 = vec3(-6.0, 4.0, 0.0);
 
+    const CROUCH_RIGHT_SHOULDER: Vec3 = vec3(-6.0, 2.0, 2.0);
+    const CROUCH_LEFT_SHOULDER: Vec3 = vec3(-6.0, 2.0, 2.0);
+
+    const CROUCH_PIVOT: Vec3 = vec3(0.0, 2.0, 0.0);
+    const CROUCH_ROTATION: [(Vec3, f32); 1] = [(vec3(1.0, 0.0, 0.0), 30.0)];
+    const CROUCH_TORSO_OFFSET: Vec3 = vec3(0.0, 0.0, 1.8);
+    const CROUCH_HEAD_OFFSET: Vec3 = vec3(0.0, -2.0, 3.0);
+    const CROUCH_SLEEVE_OFFSET: Vec3 = vec3(0.0, 0.0, -2.0);
+
     fn load(atlas: image::DynamicImage, name: &str, context: &Context) -> Self {
         if atlas.get_pixel(55, 20).0[3] < 10 {
             Self {
@@ -560,12 +658,60 @@ impl Skin {
         }
     }
 
+    fn load_crouched(atlas: image::DynamicImage, name: &str, context: &Context) -> Skin {
+        let mut skin = Self::load(atlas, name, context);
+        let torso = &mut skin.limbs[Skin::TORSO];
+        let shirt = &mut skin.trim[Skin::SHIRT];
+
+        torso.matrix = Mat4::from_translation(Self::CROUCH_TORSO_OFFSET) * torso.matrix;
+        shirt.matrix = Mat4::from_translation(Self::CROUCH_TORSO_OFFSET) * shirt.matrix;
+
+        skin.limbs[Skin::LEFT_ARM].matrix =
+            Mat4::from_translation(Self::CROUCH_TORSO_OFFSET) * skin.limbs[Skin::LEFT_ARM].matrix;
+        skin.limbs[Skin::RIGHT_ARM].matrix =
+            Mat4::from_translation(Self::CROUCH_TORSO_OFFSET) * skin.limbs[Skin::RIGHT_ARM].matrix;
+        skin.trim[Skin::LEFT_SLEEVE].matrix =
+            Mat4::from_translation(Self::CROUCH_TORSO_OFFSET + Self::CROUCH_SLEEVE_OFFSET)
+                * skin.limbs[Skin::LEFT_SLEEVE].matrix;
+        skin.trim[Skin::RIGHT_SLEEVE].matrix =
+            Mat4::from_translation(Self::CROUCH_TORSO_OFFSET + Self::CROUCH_SLEEVE_OFFSET)
+                * skin.limbs[Skin::RIGHT_SLEEVE].matrix;
+
+        skin.limbs[Skin::HEAD].matrix =
+            Mat4::from_translation(Self::CROUCH_HEAD_OFFSET) * skin.limbs[Skin::HEAD].matrix;
+        skin.trim[Skin::HELMET].matrix =
+            Mat4::from_translation(Self::CROUCH_HEAD_OFFSET) * skin.trim[Skin::HELMET].matrix;
+        skin.limbs[Skin::HEAD].set_transformation(Mat4::identity());
+        skin.trim[Skin::HELMET].set_transformation(Mat4::identity());
+
+        skin
+    }
+
     fn reset(&mut self) {
         for limb in self.limbs.iter_mut() {
             limb.set_transformation(Mat4::identity());
         }
         for trim in self.trim.iter_mut() {
             trim.set_transformation(Mat4::identity());
+        }
+    }
+
+    fn reset_crouched(&mut self) {
+        for (i, limb) in self.limbs.iter_mut().enumerate() {
+            match i {
+                Self::TORSO | Self::RIGHT_ARM | Self::LEFT_ARM => {
+                    limb.rotate_around(Self::CROUCH_PIVOT, &Self::CROUCH_ROTATION)
+                }
+                _ => limb.set_transformation(Mat4::identity()),
+            }
+        }
+        for (i, limb) in self.trim.iter_mut().enumerate() {
+            match i {
+                Self::SHIRT | Self::RIGHT_SLEEVE | Self::LEFT_SLEEVE => {
+                    limb.rotate_around(Self::CROUCH_PIVOT, &Self::CROUCH_ROTATION)
+                }
+                _ => limb.set_transformation(Mat4::identity()),
+            }
         }
     }
 
@@ -595,6 +741,38 @@ impl Skin {
         self.trim[Self::LEFT_PANTS].rotate_around(Self::LEFT_JOINT, &[(Vec3::unit_x(), 30.0)]);
     }
 
+    fn flap_right_arm_and_leg_crouched(&mut self) {
+        self.limbs[Self::RIGHT_LEG].rotate_around(Self::RIGHT_JOINT, &[(Vec3::unit_x(), 30.0)]);
+        self.limbs[Self::RIGHT_ARM]
+            .rotate_around(Self::CROUCH_RIGHT_SHOULDER, &[(Vec3::unit_x(), -30.0)]);
+        self.limbs[Self::LEFT_LEG].rotate_around(Self::LEFT_JOINT, &[(Vec3::unit_x(), -30.0)]);
+        self.limbs[Self::LEFT_ARM]
+            .rotate_around(Self::CROUCH_LEFT_SHOULDER, &[(Vec3::unit_x(), 30.0)]);
+
+        self.trim[Self::RIGHT_PANTS].rotate_around(Self::RIGHT_JOINT, &[(Vec3::unit_x(), 30.0)]);
+        self.trim[Self::RIGHT_SLEEVE]
+            .rotate_around(Self::CROUCH_RIGHT_SHOULDER, &[(Vec3::unit_x(), -30.0)]);
+        self.trim[Self::LEFT_PANTS].rotate_around(Self::LEFT_JOINT, &[(Vec3::unit_x(), -30.0)]);
+        self.trim[Self::LEFT_SLEEVE]
+            .rotate_around(Self::CROUCH_LEFT_SHOULDER, &[(Vec3::unit_x(), 30.0)]);
+    }
+
+    fn flap_left_arm_and_leg_crouched(&mut self) {
+        self.limbs[Self::RIGHT_ARM]
+            .rotate_around(Self::CROUCH_RIGHT_SHOULDER, &[(Vec3::unit_x(), 30.0)]);
+        self.limbs[Self::RIGHT_LEG].rotate_around(Self::RIGHT_JOINT, &[(Vec3::unit_x(), -30.0)]);
+        self.limbs[Self::LEFT_ARM]
+            .rotate_around(Self::CROUCH_LEFT_SHOULDER, &[(Vec3::unit_x(), -30.0)]);
+        self.limbs[Self::LEFT_LEG].rotate_around(Self::LEFT_JOINT, &[(Vec3::unit_x(), 30.0)]);
+
+        self.trim[Self::RIGHT_SLEEVE]
+            .rotate_around(Self::CROUCH_RIGHT_SHOULDER, &[(Vec3::unit_x(), 30.0)]);
+        self.trim[Self::RIGHT_PANTS].rotate_around(Self::RIGHT_JOINT, &[(Vec3::unit_x(), -30.0)]);
+        self.trim[Self::LEFT_SLEEVE]
+            .rotate_around(Self::CROUCH_LEFT_SHOULDER, &[(Vec3::unit_x(), -30.0)]);
+        self.trim[Self::LEFT_PANTS].rotate_around(Self::LEFT_JOINT, &[(Vec3::unit_x(), 30.0)]);
+    }
+
     fn punch(&mut self, frame_index: char) {
         self.reset();
         let axes_angles = match frame_index {
@@ -606,8 +784,29 @@ impl Skin {
         self.trim[Self::RIGHT_ARM].rotate_around(Self::RIGHT_SHOULDER, &axes_angles);
     }
 
+    fn punch_crouched(&mut self, frame_index: char) {
+        self.reset_crouched();
+        let axes_angles = match frame_index {
+            'E' => [(Vec3::unit_x(), -40.0), (Vec3::unit_z(), -13.0)],
+            'F' => [(Vec3::unit_x(), -80.0), (Vec3::unit_z(), -5.0)],
+            _ => unreachable!(),
+        };
+        self.limbs[Self::RIGHT_ARM].rotate_around(Self::CROUCH_RIGHT_SHOULDER, &axes_angles);
+        self.trim[Self::RIGHT_ARM].rotate_around(Self::CROUCH_RIGHT_SHOULDER, &axes_angles);
+    }
+
     fn apply_red(&mut self, saturation: u8) {
         self.reset();
+        for limb in self.limbs.iter_mut() {
+            limb.apply_red(saturation);
+        }
+        for trim in self.trim.iter_mut() {
+            trim.apply_red(saturation);
+        }
+    }
+
+    fn apply_red_crouched(&mut self, saturation: u8) {
+        self.reset_crouched();
         for limb in self.limbs.iter_mut() {
             limb.apply_red(saturation);
         }

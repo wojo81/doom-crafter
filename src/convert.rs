@@ -56,6 +56,7 @@ pub fn convert_all(
     {
         std::fs::create_dir_all(temp.join("sprites"))?;
         std::fs::create_dir(temp.join("mugshots"))?;
+        std::fs::create_dir(temp.join("crouch_sprites"))?;
         std::fs::create_dir(temp.join("fists"))?;
         convert(
             &name,
