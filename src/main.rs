@@ -77,6 +77,8 @@ impl MainContext {
                             app.items.remove(i);
                         }
                     }
+                    KeyCode::Char('s') => app.subcontext = Some(Box::new(FilePrompt::save())),
+                    KeyCode::Char('l') => app.subcontext = Some(Box::new(FilePrompt::load())),
                     KeyCode::Enter if !app.items.is_empty() => {
                         app.subcontext = Some(Box::new(ConvertPrompt::default()))
                     }
@@ -156,7 +158,7 @@ impl MainContext {
 
     fn draw_footer(&mut self, theme: &Theme, frame: &mut Frame, area: Rect) {
         let info_footer = Paragraph::new(Text::from(
-            "(A) Add (E) Edit (D) Delete (J) Next (K) Prev (Enter) Convert (Q) Quit",
+            "(A) Add (E) Edit (D) Delete (S) Save (L) Load (J) Next (K) Prev (Enter) Convert (Q) Quit",
         ))
         .centered()
         .style(Style::default().fg(theme.accent).bg(theme.header_bg))
@@ -392,6 +394,123 @@ impl ItemPrompt {
     }
 }
 
+struct FilePrompt {
+    save: bool,
+    file_name: TextState<'static>,
+    error: String,
+}
+
+impl Context for FilePrompt {
+    fn handle_event(mut self: Box<Self>, app: &mut App, event: Event) -> Option<Box<dyn Context>> {
+        if let Event::Key(key) = event {
+            match key.code {
+                KeyCode::Esc => return None,
+                KeyCode::Enter => {
+                    if self.file_name.status().is_done() {
+                        if self.save {
+                            self.save_csv(app);
+                        } else {
+                            self.load_csv(app);
+                        }
+                        return None;
+                    }
+                }
+                _ => {
+                    self.file_name.handle_key_event(key);
+                    self.validate();
+                }
+            }
+        }
+        Some(self)
+    }
+
+    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
+        let popup = Block::bordered();
+        let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
+            .split(popup_area(frame.area(), 70, 70));
+        frame.render_widget(Clear, areas[0]);
+        frame.render_widget(popup, areas[0]);
+        frame.render_widget(Clear, areas[1]);
+        frame.render_widget(
+            Line::from(if self.save {
+                "(Enter) Save"
+            } else {
+                "(Enter) Load"
+            })
+            .right_aligned(),
+            areas[1],
+        );
+
+        let areas = Layout::vertical(vec![Constraint::Length(1); 2])
+            .margin(2)
+            .split(areas[0]);
+        TextPrompt::from("File name").draw(frame, areas[0], &mut self.file_name);
+        frame.render_widget(Line::from(self.error.clone()), areas[1]);
+    }
+}
+
+impl FilePrompt {
+    fn save() -> Self {
+        Self {
+            save: true,
+            file_name: TextState::default().with_focus(FocusState::Focused),
+            error: String::new(),
+        }
+    }
+
+    fn load() -> Self {
+        Self {
+            save: false,
+            file_name: TextState::default().with_focus(FocusState::Focused),
+            error: String::new(),
+        }
+    }
+
+    fn save_csv(&self, app: &App) {
+        let file_name = self.file_name.value();
+
+        if std::path::Path::new(file_name).exists() {
+            std::fs::remove_file(file_name).unwrap();
+        }
+
+        let mut writer = csv::Writer::from_writer(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(file_name)
+                .unwrap(),
+        );
+
+        for item in &app.items {
+            writer.serialize(item.clone()).unwrap();
+        }
+    }
+
+    fn load_csv(&self, app: &mut App) {
+        let file_name = self.file_name.value();
+        let mut reader = csv::Reader::from_reader(std::io::BufReader::new(
+            std::fs::File::open(file_name).unwrap(),
+        ));
+
+        for result in reader.deserialize() {
+            app.items.push(result.unwrap());
+        }
+    }
+
+    fn validate(&mut self) {
+        *self.file_name.status_mut() = Status::Aborted;
+        let file_name = self.file_name.value();
+        if !file_name.ends_with(".csv") {
+            self.error = "Must be a csv file!".into();
+        } else if !self.save && !std::path::Path::new(file_name).exists() {
+            self.error = "Does not exist!".into();
+        } else {
+            *self.file_name.status_mut() = Status::Done;
+            self.error.clear();
+        }
+    }
+}
+
 struct ConvertPrompt {
     file_name: TextState<'static>,
     error: String,
@@ -419,6 +538,7 @@ impl Context for ConvertPrompt {
                                 acc,
                             )));
                         } else {
+                            self.file_name.blur();
                             let _gag = gag::Gag::stdout().unwrap();
                             crate::convert::convert_all(
                                 &app.items,
@@ -492,7 +612,7 @@ impl Context for FistsConfirm {
         frame.render_widget(Clear, areas[0]);
         frame.render_widget(Clear, areas[1]);
         frame.render_widget(popup, areas[0]);
-        frame.render_widget(Line::from("(y) Yes (n) No").right_aligned(), areas[1]);
+        frame.render_widget(Line::from("(Y) Yes (N) No").right_aligned(), areas[1]);
     }
 }
 
@@ -535,7 +655,7 @@ impl Context for Success {
         frame.render_widget(Clear, areas[0]);
         frame.render_widget(popup, areas[0]);
         frame.render_widget(Clear, areas[1]);
-        frame.render_widget(Line::from("(any) Quit").right_aligned(), areas[1]);
+        frame.render_widget(Line::from("(Any) Quit").right_aligned(), areas[1]);
 
         let area = Rect::new(
             areas[0].x,

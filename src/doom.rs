@@ -18,51 +18,57 @@ pub fn consume_images(
         "S_SKIN",
     ))?;
 
-    let mut paths = std::fs::read_dir(std::path::Path::new("temp").join("sprites"))
-        .map(|d| d.map(|p| p.unwrap().path().to_str().unwrap().to_string()))?
-        .collect::<Vec<_>>();
-    paths.sort();
-    putpng::grab::grab_all(
-        paths.iter().map(|s| s.clone()),
-        "w / 2".to_string(),
-        "h - 15".to_string(),
-    )
-    .unwrap();
-    putpng::crop::apply_crop(paths.iter().map(|s| s.clone())).unwrap();
-    for path in paths {
-        wad.add_lump_raw(tinywad::lump::LumpAdd::new(
-            tinywad::lump::LumpAddKind::Back,
-            &std::fs::read(&path)?,
-            &std::path::Path::new(&path)
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap(),
-        ))?;
-    }
+    grab_and_read("sprites", "w / 2", "h - 15", wad)?;
 
-    let mut paths = std::fs::read_dir(std::path::Path::new("temp").join("crouch_sprites"))
-        .map(|d| d.map(|p| p.unwrap().path().to_str().unwrap().to_string()))?
-        .collect::<Vec<_>>();
-    paths.sort();
-    putpng::grab::grab_all(
-        paths.iter().map(|s| s.clone()),
-        "w / 2".to_string(),
-        "h - 15".to_string(),
-    )
-    .unwrap();
-    putpng::crop::apply_crop(paths.iter().map(|s| s.clone())).unwrap();
-    for path in paths {
-        wad.add_lump_raw(tinywad::lump::LumpAdd::new(
-            tinywad::lump::LumpAddKind::Back,
-            &std::fs::read(&path)?,
-            &std::path::Path::new(&path)
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap(),
-        ))?;
-    }
+    // let mut paths = std::fs::read_dir(std::path::Path::new("temp").join("sprites"))
+    //     .map(|d| d.map(|p| p.unwrap().path().to_str().unwrap().to_string()))?
+    //     .collect::<Vec<_>>();
+    // paths.sort();
+    // putpng::grab::grab_all(
+    //     paths.iter().map(|s| s.clone()),
+    //     "w / 2".to_string(),
+    //     "h - 15".to_string(),
+    // )
+    // .unwrap();
+    // putpng::crop::apply_crop(paths.iter().map(|s| s.clone())).unwrap();
+    // for path in paths {
+    //     wad.add_lump_raw(tinywad::lump::LumpAdd::new(
+    //         tinywad::lump::LumpAddKind::Back,
+    //         &std::fs::read(&path)?,
+    //         &std::path::Path::new(&path)
+    //             .file_stem()
+    //             .unwrap()
+    //             .to_str()
+    //             .unwrap(),
+    //     ))?;
+    // }
+
+    grab_and_read("crouch_sprites", "w / 2", "h - 15", wad)?;
+
+    // let mut paths = std::fs::read_dir(std::path::Path::new("temp").join("crouch_sprites"))
+    //     .map(|d| d.map(|p| p.unwrap().path().to_str().unwrap().to_string()))?
+    //     .collect::<Vec<_>>();
+    // paths.sort();
+    // putpng::grab::grab_all(
+    //     paths.iter().map(|s| s.clone()),
+    //     "w / 2".to_string(),
+    //     "h - 15".to_string(),
+    // )
+    // .unwrap();
+    // putpng::crop::apply_crop(paths.iter().map(|s| s.clone())).unwrap();
+    // for path in paths {
+    //     wad.add_lump_raw(tinywad::lump::LumpAdd::new(
+    //         tinywad::lump::LumpAddKind::Back,
+    //         &std::fs::read(&path)?,
+    //         &std::path::Path::new(&path)
+    //             .file_stem()
+    //             .unwrap()
+    //             .to_str()
+    //             .unwrap(),
+    //     ))?;
+    // }
+
+    grab_and_read("mugshots", "w / 2 - 18", "h / 2 - 17", wad)?;
 
     let mut paths = std::fs::read_dir(std::path::Path::new("temp").join("mugshots"))
         .map(|d| d.map(|p| p.unwrap().path().to_str().unwrap().to_string()))?
@@ -72,6 +78,33 @@ pub fn consume_images(
         paths.iter().map(|s| s.clone()),
         "w / 2 - 18".to_string(),
         "h / 2 - 17".to_string(),
+    )
+    .unwrap();
+    putpng::crop::apply_crop(paths.iter().map(|s| s.clone())).unwrap();
+    for path in paths {
+        wad.add_lump_raw(tinywad::lump::LumpAdd::new(
+            tinywad::lump::LumpAddKind::Back,
+            &std::fs::read(&path)?,
+            &std::path::Path::new(&path)
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        ))?;
+    }
+
+    Ok(())
+}
+
+fn grab_and_read(subpath: &str, x: &str, y: &str, wad: &mut Wad) -> anyhow::Result<()> {
+    let mut paths = std::fs::read_dir(std::path::Path::new("temp").join(subpath))
+        .map(|d| d.map(|p| p.unwrap().path().to_str().unwrap().to_string()))?
+        .collect::<Vec<_>>();
+    paths.sort();
+    putpng::grab::grab_all(
+        paths.iter().map(|s| s.clone()),
+        x.to_string(),
+        y.to_string(),
     )
     .unwrap();
     putpng::crop::apply_crop(paths.iter().map(|s| s.clone())).unwrap();

@@ -1,7 +1,7 @@
 use three_d::*;
 use tinywad::models::operation::WadOp;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SkinItem {
     pub name: String,
     pub path: String,
