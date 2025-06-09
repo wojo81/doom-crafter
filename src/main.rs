@@ -77,8 +77,12 @@ impl MainContext {
                             app.items.remove(i);
                         }
                     }
-                    KeyCode::Char('s') => app.subcontext = Some(Box::new(FilePrompt::save())),
-                    KeyCode::Char('l') => app.subcontext = Some(Box::new(FilePrompt::load())),
+                    KeyCode::Char('s') if !app.items.is_empty() => {
+                        app.subcontext = Some(Box::new(FilePrompt::save()))
+                    }
+                    KeyCode::Char('l') if app.items.is_empty() => {
+                        app.subcontext = Some(Box::new(FilePrompt::load()))
+                    }
                     KeyCode::Enter if !app.items.is_empty() => {
                         app.subcontext = Some(Box::new(ConvertPrompt::default()))
                     }
@@ -743,6 +747,7 @@ fn main() {
     let terminal = ratatui::init();
     let result = App::default().run(terminal);
     ratatui::restore();
+    let _ = result.inspect_err(|e| eprintln!("{}", e));
 }
 
 fn validate_sprite(sprite: &str) -> bool {

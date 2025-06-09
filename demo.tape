@@ -26,4 +26,6 @@ Sleep 2s
 Enter
 Type "minecraft.wad"
 Enter
-Sleep 10s
+Sleep 2s
+Type "y"
+Sleep 15s
