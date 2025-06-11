@@ -262,7 +262,7 @@ pub fn render_mugshots(
     context: &Context,
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
-    camera: &mut Camera,
+    camera: &Camera,
 ) -> anyhow::Result<()> {
     let mut head = Limb::load(
         &image::open(path)?,
