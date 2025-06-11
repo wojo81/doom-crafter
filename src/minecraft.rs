@@ -28,7 +28,6 @@ pub fn render_images(
         Wrapping::ClampToEdge,
         Wrapping::ClampToEdge,
     );
-    let light = AmbientLight::new(context, 1.0, Srgba::WHITE);
     let delta = 10.0;
 
     render_sprites(
@@ -39,7 +38,6 @@ pub fn render_images(
         &mut target,
         &mut depth,
         camera,
-        &light,
     )?;
     let mut sprite = sprite.to_string();
     sprite.replace_range(3..4, "[");
@@ -61,7 +59,6 @@ pub fn render_images(
         &mut target,
         &mut depth,
         camera,
-        &light,
     )?;
     camera.translate(Vec3::unit_z() * -delta);
     Ok(())
@@ -75,7 +72,6 @@ pub fn render_sprites(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &mut Camera,
-    light: &AmbientLight,
 ) -> anyhow::Result<()> {
     let mut skin = Skin::load(image::open(&path)?, sprite, context);
 
@@ -267,7 +263,6 @@ pub fn render_mugshots(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &mut Camera,
-    light: &AmbientLight,
 ) -> anyhow::Result<()> {
     let mut head = Limb::load(
         &image::open(path)?,
@@ -323,7 +318,7 @@ pub fn render_mugshots(
 
         match suffix {
             "DEAD" | "GOD" => render_mugshot(
-                &head, &helmet, mugshot, suffix, 0, viewport, target, depth, camera, light,
+                &head, &helmet, mugshot, suffix, 0, viewport, target, depth, camera,
             )?,
             "EVL" | "KILL" | "OUCH" => {
                 for i in 0..5 {
@@ -331,7 +326,7 @@ pub fn render_mugshots(
                     head.apply_red(saturation);
                     helmet.apply_red(saturation);
                     render_mugshot(
-                        &head, &helmet, mugshot, suffix, i, viewport, target, depth, camera, light,
+                        &head, &helmet, mugshot, suffix, i, viewport, target, depth, camera,
                     )?;
                 }
                 let axis_angle = [(Vec3::unit_x(), 0.0)];
@@ -363,7 +358,6 @@ pub fn render_mugshots(
                             target,
                             depth,
                             camera,
-                            light,
                         )?;
                     }
                 }
@@ -383,7 +377,6 @@ pub fn render_mugshots(
                         target,
                         depth,
                         camera,
-                        light,
                     )?;
                 }
             }
@@ -404,7 +397,6 @@ fn render_mugshot(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &Camera,
-    light: &AmbientLight,
 ) -> anyhow::Result<()> {
     let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
         .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
@@ -414,7 +406,7 @@ fn render_mugshot(
                 .iter()
                 .map(|f| &f.model)
                 .chain(helmet.texels.iter().map(|t| &t.model)),
-            &[&light],
+            &[],
         )
         .read_color();
 
@@ -545,7 +537,7 @@ impl Skin {
                         &atlas,
                         name.to_string() + "RightSleeve",
                         Patch::SLIM_RIGHT_SLEEVE,
-                        vec3(-5.5, 2.0, 0.0),
+                        vec3(-6.0, 2.0, 0.0),
                         context,
                     ),
                     Trim::load(
@@ -559,7 +551,7 @@ impl Skin {
                         &atlas,
                         name.to_string() + "LeftSleeve",
                         Patch::SLIM_LEFT_SLEEVE,
-                        vec3(5.5, 2.0, 0.0),
+                        vec3(6.0, 2.0, 0.0),
                         context,
                     ),
                 ],
@@ -636,7 +628,7 @@ impl Skin {
                         &atlas,
                         name.to_string() + "RightSleeve",
                         Patch::RIGHT_SLEEVE,
-                        vec3(-6.0, 2.0, 0.0),
+                        vec3(5.5, 2.0, 0.0),
                         context,
                     ),
                     Trim::load(
@@ -650,7 +642,7 @@ impl Skin {
                         &atlas,
                         name.to_string() + "LeftSleeve",
                         Patch::LEFT_SLEEVE,
-                        vec3(6.0, 2.0, 0.0),
+                        vec3(5.5, 2.0, 0.0),
                         context,
                     ),
                 ],

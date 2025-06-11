@@ -1,3 +1,4 @@
+use putpng::crc::Crc32;
 use three_d::*;
 use tinywad::models::operation::WadOp;
 
@@ -32,6 +33,7 @@ pub fn convert_all(
         0.1,
         100.0,
     );
+    let crc = Crc32::new();
 
     let temp = std::path::Path::new("temp");
     if temp.exists() {
@@ -67,6 +69,7 @@ pub fn convert_all(
             &viewport,
             &context,
             &mut camera,
+            &crc,
         )?;
         if acc.is_some() {
             crate::fists::convert(
@@ -76,6 +79,7 @@ pub fn convert_all(
                 &viewport,
                 &context,
                 &mut camera,
+                &crc,
             )?;
         }
         std::fs::remove_dir_all(temp)?;
@@ -107,8 +111,9 @@ fn convert(
     viewport: &Viewport,
     context: &Context,
     camera: &mut Camera,
+    crc: &Crc32,
 ) -> anyhow::Result<()> {
     crate::minecraft::render_images(path, sprite, mugshot, viewport, context, camera)?;
-    crate::doom::consume_images(name, sprite, mugshot, wad)?;
+    crate::doom::consume_images(name, sprite, mugshot, wad, crc)?;
     Ok(())
 }

@@ -1,6 +1,7 @@
 use std::f32::consts::PI;
 
 use crate::{convert::SkinItem, minecraft::*};
+use putpng::crc::Crc32;
 use three_d::*;
 use tinywad::models::operation::WadOp;
 
@@ -21,10 +22,11 @@ pub fn convert(
     viewport: &Viewport,
     context: &Context,
     camera: &mut Camera,
+    crc: &Crc32,
 ) -> anyhow::Result<()> {
     sprite.replace_range(3..4, "]");
     render_fists(path, &sprite, viewport, context, camera)?;
-    consume_fists(fists_wad)?;
+    consume_fists(fists_wad, crc)?;
     Ok(())
 }
 
@@ -158,18 +160,19 @@ fn render_fist(
     Ok(())
 }
 
-fn consume_fists(fists_wad: &mut tinywad::wad::Wad) -> anyhow::Result<()> {
+fn consume_fists(fists_wad: &mut tinywad::wad::Wad, crc: &Crc32) -> anyhow::Result<()> {
     let mut paths = std::fs::read_dir(std::path::Path::new("temp").join("fists"))
         .map(|d| d.map(|p| p.unwrap().path().to_str().unwrap().to_string()))?
         .collect::<Vec<_>>();
     paths.sort();
     putpng::grab::grab_all(
         paths.iter().map(|s| s.clone()),
+        crc,
         "-w / 2 - 15".into(),
         "-h / 2 + 3".into(),
     )
     .unwrap();
-    putpng::crop::apply_crop(paths.iter().map(|s| s.clone())).unwrap();
+    putpng::crop::crop_all(paths.iter().map(|s| s.clone()), crc).unwrap();
 
     for path in paths {
         fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
@@ -261,7 +264,7 @@ pub fn finalize(
         let retrieval = indoc::formatdoc!(
             r#"
                if (skin == 0) giveInventory("Fist", 1);
-               {} 
+               {}
             "#,
             (1..=items.len())
                 .map(|i| format!("else if (skin == {i}) giveInventory(\"Fist_{i}\", 1);\n"))
