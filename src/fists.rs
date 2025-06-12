@@ -170,6 +170,7 @@ fn consume_fists(fists_wad: &mut tinywad::wad::Wad, crc: &Crc32) -> anyhow::Resu
         crc,
         "-w / 2 - 15".into(),
         "-h / 2 + 3".into(),
+        true,
     )
     .unwrap();
     putpng::crop::crop_all(paths.iter().map(|s| s.clone()), crc).unwrap();

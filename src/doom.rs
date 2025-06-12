@@ -43,6 +43,7 @@ fn grab_write_into(
         &crc,
         x.to_string(),
         y.to_string(),
+        true,
     )
     .unwrap();
     putpng::crop::crop_all(paths.iter().map(|s| s.clone()), &crc).unwrap();

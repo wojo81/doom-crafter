@@ -2255,8 +2255,9 @@ dependencies = [
 
 [[package]]
 name = "putpng"
-version = "0.1.0"
-source = "git+https://github.com/wojo81/putpng#fb78d4d363161f48342f6fd77218d15a27204f70"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7d436294a4c715451025570cb821dadabcdec7478d4686d154f76d3dfe2b88c"
 dependencies = [
  "clap 4.5.40",
  "image 0.24.9",
