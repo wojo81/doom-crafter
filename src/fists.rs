@@ -208,6 +208,7 @@ pub fn finalize(
             s.push_str(&indoc::formatdoc!(
                 r#"
             actor Fist_{i} : Weapon replaces Fist {{
+                Tag "$FIST"
                 Weapon.SlotNumber 1
                 Weapon.SelectionOrder 1
                 +Weapon.NOAUTOFIRE
@@ -239,6 +240,12 @@ pub fn finalize(
             "DECORATE",
         ))?;
     }
+
+    fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
+        tinywad::lump::LumpAddKind::Back,
+        &"[enu default]\nFIST = \"Fist\";\0".to_string().into_bytes(),
+        "LANGUAGE",
+    ))?;
 
     fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
         tinywad::lump::LumpAddKind::Back,

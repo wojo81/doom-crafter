@@ -13,7 +13,7 @@ pub fn consume_images(
     wad.add_lump_raw(tinywad::lump::LumpAdd::new(
         tinywad::lump::LumpAddKind::Back,
         &format!(
-            "name = \"{name}\"\nsprite = {sprite}\ncrouchsprite = {crouch_sprite}\nface = {mugshot}\nscale = 0.5\ngender = male"
+            "name = \"{name}\"\nsprite = {sprite}\ncrouchsprite = {crouch_sprite}\nface = {mugshot}\nscale = 0.5"
         )
         .as_bytes()
         .to_vec(),
