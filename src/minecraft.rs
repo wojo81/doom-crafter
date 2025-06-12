@@ -628,7 +628,7 @@ impl Skin {
                         &atlas,
                         name.to_string() + "RightSleeve",
                         Patch::RIGHT_SLEEVE,
-                        vec3(5.5, 2.0, 0.0),
+                        vec3(-6.0, 2.0, 0.0),
                         context,
                     ),
                     Trim::load(
@@ -642,7 +642,7 @@ impl Skin {
                         &atlas,
                         name.to_string() + "LeftSleeve",
                         Patch::LEFT_SLEEVE,
-                        vec3(5.5, 2.0, 0.0),
+                        vec3(6.0, 2.0, 0.0),
                         context,
                     ),
                 ],
