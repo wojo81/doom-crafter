@@ -3,10 +3,12 @@ mod doom;
 mod fists;
 mod minecraft;
 
-use crate::convert::*;
+use std::time::Duration;
 
+use crate::convert::*;
 use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, poll};
+use ratatui::style::{Color, Modifier, Style, palette::tailwind};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Flex, Layout, Margin, Rect},
@@ -14,9 +16,6 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarState, Table, TableState},
 };
-
-use ratatui::style::{Color, Modifier, Style, palette::tailwind};
-
 use tui_prompts::prelude::*;
 
 struct Theme {
@@ -272,6 +271,15 @@ impl Context for ItemPrompt {
     }
 }
 
+fn new_text_state(value: &String) -> TextState<'static> {
+    let mut state = TextState::default()
+        .with_value(value.clone())
+        .with_status(Status::Done);
+    *state.position_mut() = state.value().len();
+    state.cursor_mut().0 += state.value().len() as u16;
+    state
+}
+
 impl ItemPrompt {
     fn add() -> Self {
         Self {
@@ -282,19 +290,10 @@ impl ItemPrompt {
 
     fn edit(item: &SkinItem, index: usize) -> Self {
         Self {
-            name: TextState::default()
-                .with_value(item.name.clone())
-                .with_focus(FocusState::Focused)
-                .with_status(Status::Done),
-            path: TextState::default()
-                .with_value(item.path.clone())
-                .with_status(Status::Done),
-            sprite: TextState::default()
-                .with_value(item.sprite.clone())
-                .with_status(Status::Done),
-            mugshot: TextState::default()
-                .with_value(item.mugshot.clone())
-                .with_status(Status::Done),
+            name: new_text_state(&item.name).with_focus(FocusState::Focused),
+            path: new_text_state(&item.path),
+            sprite: new_text_state(&item.sprite),
+            mugshot: new_text_state(&item.mugshot),
             edit: Some(index),
             ..Default::default()
         }
@@ -542,15 +541,10 @@ impl Context for ConvertPrompt {
                                 acc,
                             )));
                         } else {
-                            self.file_name.blur();
-                            let _gag = gag::Gag::stdout().unwrap();
-                            crate::convert::convert_all(
-                                &app.items,
+                            return Some(Box::new(Converting::new(
                                 self.file_name.value().into(),
                                 None,
-                            )
-                            .unwrap();
-                            return Some(Box::new(Success::new(self.file_name.value().into())));
+                            )));
                         }
                     }
                 }
@@ -586,20 +580,15 @@ struct FistsConfirm {
 }
 
 impl Context for FistsConfirm {
-    fn handle_event(self: Box<Self>, app: &mut App, event: Event) -> Option<Box<dyn Context>> {
+    fn handle_event(self: Box<Self>, _app: &mut App, event: Event) -> Option<Box<dyn Context>> {
         if let Event::Key(key) = event {
             match key.code {
                 KeyCode::Esc => return None,
                 KeyCode::Char('y') => {
-                    let _gag = gag::Gag::stdout().unwrap();
-                    crate::convert::convert_all(&app.items, self.file_name.clone(), Some(self.acc))
-                        .unwrap();
-                    return Some(Box::new(Success::new_with_fists(self.file_name.clone())));
+                    return Some(Box::new(Converting::new(self.file_name, Some(self.acc))));
                 }
                 KeyCode::Char('n') => {
-                    let _gag = gag::Gag::stdout().unwrap();
-                    crate::convert::convert_all(&app.items, self.file_name.clone(), None).unwrap();
-                    return Some(Box::new(Success::new(self.file_name)));
+                    return Some(Box::new(Converting::new(self.file_name, None)));
                 }
                 _ => (),
             }
@@ -635,6 +624,44 @@ impl ConvertPrompt {
             *self.file_name.status_mut() = Status::Done;
             self.error.clear();
         }
+    }
+}
+
+struct Converting {
+    file_name: String,
+    acc: Option<std::path::PathBuf>,
+}
+
+impl Converting {
+    fn new(file_name: String, acc: Option<std::path::PathBuf>) -> Self {
+        Self { file_name, acc }
+    }
+}
+
+impl Context for Converting {
+    fn handle_event(self: Box<Self>, app: &mut App, _event: Event) -> Option<Box<dyn Context>> {
+        let _gag = gag::Gag::stdout().unwrap();
+        crate::convert::convert_all(&app.items, self.file_name.clone(), self.acc.clone()).unwrap();
+        while poll(Duration::from_millis(0)).unwrap() {
+            event::read().unwrap();
+        }
+        let success = if self.acc.is_some() {
+            Success::new_with_fists(self.file_name)
+        } else {
+            Success::new(self.file_name)
+        };
+        return Some(Box::new(success));
+    }
+
+    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
+        let popup = Block::bordered();
+
+        let area = popup_area(frame.area(), 70, 70);
+        frame.render_widget(Clear, area);
+        frame.render_widget(popup, area);
+
+        let area = Rect::new(area.x, area.y + area.height / 2, area.width, 1);
+        frame.render_widget(Line::from("Converting...").centered(), area);
     }
 }
 
@@ -715,7 +742,11 @@ impl App {
                     context.draw(&self.theme, &self.items, frame);
                     subcontext.draw(&self.theme, frame);
                 })?;
-                self.subcontext = subcontext.handle_event(&mut self, event::read()?);
+                if poll(Duration::from_millis(100))? {
+                    self.subcontext = subcontext.handle_event(&mut self, event::read()?);
+                } else {
+                    self.subcontext = subcontext.handle_event(&mut self, Event::FocusGained);
+                }
             } else {
                 terminal.draw(|frame| context.draw(&self.theme, &self.items, frame))?;
                 context.handle_event(&mut self, event::read()?);

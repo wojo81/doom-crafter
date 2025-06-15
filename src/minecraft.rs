@@ -1,7 +1,6 @@
 use image::GenericImageView;
-use three_d::*;
-
 use std::f32::consts::PI;
+use three_d::*;
 
 pub fn render_images(
     path: &str,
