@@ -3,19 +3,18 @@ mod doom;
 mod fists;
 mod minecraft;
 
-use std::time::Duration;
-
 use crate::convert::*;
 use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, poll};
-use ratatui::style::{Color, Modifier, Style, palette::tailwind};
+use crossterm::event::{self, poll, Event, KeyCode, KeyEventKind};
+use ratatui::style::{palette::tailwind, Color, Modifier, Style};
 use ratatui::{
-    DefaultTerminal, Frame,
     layout::{Constraint, Flex, Layout, Margin, Rect},
     style::Stylize,
     text::{Line, Text},
     widgets::{Block, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarState, Table, TableState},
+    DefaultTerminal, Frame,
 };
+use std::time::Duration;
 use tui_prompts::prelude::*;
 
 struct Theme {
