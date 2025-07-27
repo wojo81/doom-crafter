@@ -848,6 +848,7 @@ dependencies = [
  "putpng",
  "ratatui",
  "serde",
+ "tempfile",
  "three-d",
  "three-d-asset",
  "tinywad",

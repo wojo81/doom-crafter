@@ -1,4 +1,5 @@
 use putpng::crc::Crc32;
+use std::path::Path;
 use tinywad::{models::operation::WadOp, wad::Wad};
 
 pub fn consume_images(
@@ -7,6 +8,7 @@ pub fn consume_images(
     mugshot: &str,
     wad: &mut Wad,
     crc: &Crc32,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     let mut crouch_sprite = sprite.to_string();
     crouch_sprite.replace_range(3..4, "[");
@@ -20,9 +22,9 @@ pub fn consume_images(
         "S_SKIN",
     ))?;
 
-    grab_write_into("sprites", "w / 2", "h - 15", crc, wad)?;
-    grab_write_into("crouch_sprites", "w / 2", "h - 15", crc, wad)?;
-    grab_write_into("mugshots", "w / 2 - 18", "h / 2 - 17", crc, wad)?;
+    grab_write_into("sprites", "w / 2", "h - 15", crc, wad, temp)?;
+    grab_write_into("crouch_sprites", "w / 2", "h - 15", crc, wad, temp)?;
+    grab_write_into("mugshots", "w / 2 - 18", "h / 2 - 17", crc, wad, temp)?;
 
     Ok(())
 }
@@ -33,8 +35,9 @@ fn grab_write_into(
     y: &str,
     crc: &Crc32,
     wad: &mut Wad,
+    temp: &Path,
 ) -> anyhow::Result<()> {
-    let mut paths = std::fs::read_dir(std::path::Path::new("temp").join(subpath))
+    let mut paths = std::fs::read_dir(temp.join(subpath))
         .map(|d| d.map(|p| p.unwrap().path().to_str().unwrap().to_string()))?
         .collect::<Vec<_>>();
     paths.sort();
@@ -51,11 +54,7 @@ fn grab_write_into(
         wad.add_lump_raw(tinywad::lump::LumpAdd::new(
             tinywad::lump::LumpAddKind::Back,
             &std::fs::read(&path)?,
-            &std::path::Path::new(&path)
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap(),
+            &Path::new(&path).file_stem().unwrap().to_str().unwrap(),
         ))?;
     }
 

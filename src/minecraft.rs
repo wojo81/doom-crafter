@@ -1,5 +1,5 @@
 use image::GenericImageView;
-use std::f32::consts::PI;
+use std::{f32::consts::PI, path::Path};
 use three_d::*;
 
 pub fn render_images(
@@ -9,6 +9,7 @@ pub fn render_images(
     viewport: &Viewport,
     context: &Context,
     camera: &mut Camera,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     let mut target = Texture2D::new_empty::<[u8; 4]>(
         &context,
@@ -37,6 +38,7 @@ pub fn render_images(
         &mut target,
         &mut depth,
         camera,
+        temp,
     )?;
     let mut sprite = sprite.to_string();
     sprite.replace_range(3..4, "[");
@@ -48,6 +50,7 @@ pub fn render_images(
         &mut target,
         &mut depth,
         camera,
+        temp,
     )?;
     camera.translate(Vec3::unit_z() * delta);
     render_mugshots(
@@ -58,6 +61,7 @@ pub fn render_images(
         &mut target,
         &mut depth,
         camera,
+        temp,
     )?;
     camera.translate(Vec3::unit_z() * -delta);
     Ok(())
@@ -71,6 +75,7 @@ pub fn render_sprites(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &mut Camera,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     let mut skin = Skin::load(image::open(&path)?, sprite, context);
 
@@ -106,6 +111,7 @@ pub fn render_sprites(
                         target,
                         depth,
                         camera,
+                        temp,
                     )?;
                     camera.rotate_around_with_fixed_up(Vec3::zero(), -PI / 4.0, 0.0);
                 }
@@ -122,6 +128,7 @@ pub fn render_sprites(
                     target,
                     depth,
                     camera,
+                    temp,
                 )?;
             }
             _ => unreachable!(),
@@ -140,6 +147,7 @@ fn render_sprite(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &Camera,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
         .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
@@ -164,8 +172,7 @@ fn render_sprite(
             ..Default::default()
         }
         .serialize(
-            std::path::Path::new("temp")
-                .join("sprites")
+            temp.join("sprites")
                 .join(format!("{sprite}{frame_index}{rotation}.png")),
         )?,
     )?;
@@ -181,6 +188,7 @@ pub fn render_crouch_sprites(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &mut Camera,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     let mut skin = Skin::load_crouched(image::open(&path)?, sprite, context);
 
@@ -204,6 +212,7 @@ pub fn render_crouch_sprites(
                 target,
                 depth,
                 camera,
+                temp,
             )?;
             camera.rotate_around_with_fixed_up(Vec3::zero(), -PI / 4.0, 0.0);
         }
@@ -221,6 +230,7 @@ fn render_crouch_sprite(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &Camera,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
         .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
@@ -245,8 +255,7 @@ fn render_crouch_sprite(
             ..Default::default()
         }
         .serialize(
-            std::path::Path::new("temp")
-                .join("crouch_sprites")
+            temp.join("crouch_sprites")
                 .join(format!("{sprite}{frame_index}{rotation}.png")),
         )?,
     )?;
@@ -262,6 +271,7 @@ pub fn render_mugshots(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &Camera,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     let mut head = Limb::load(
         &image::open(path)?,
@@ -317,7 +327,7 @@ pub fn render_mugshots(
 
         match suffix {
             "DEAD" | "GOD" => render_mugshot(
-                &head, &helmet, mugshot, suffix, 0, viewport, target, depth, camera,
+                &head, &helmet, mugshot, suffix, 0, viewport, target, depth, camera, temp,
             )?,
             "EVL" | "KILL" | "OUCH" => {
                 for i in 0..5 {
@@ -325,7 +335,7 @@ pub fn render_mugshots(
                     head.apply_red(saturation);
                     helmet.apply_red(saturation);
                     render_mugshot(
-                        &head, &helmet, mugshot, suffix, i, viewport, target, depth, camera,
+                        &head, &helmet, mugshot, suffix, i, viewport, target, depth, camera, temp,
                     )?;
                 }
                 let axis_angle = [(Vec3::unit_x(), 0.0)];
@@ -357,6 +367,7 @@ pub fn render_mugshots(
                             target,
                             depth,
                             camera,
+                            temp,
                         )?;
                     }
                 }
@@ -376,6 +387,7 @@ pub fn render_mugshots(
                         target,
                         depth,
                         camera,
+                        temp,
                     )?;
                 }
             }
@@ -396,6 +408,7 @@ fn render_mugshot(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &Camera,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
         .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
@@ -419,8 +432,7 @@ fn render_mugshot(
             ..Default::default()
         }
         .serialize(
-            std::path::Path::new("temp")
-                .join("mugshots")
+            temp.join("mugshots")
                 .join(format!("{mugshot}{suffix}{index}.png")),
         )?,
     )?;

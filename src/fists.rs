@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, path::Path};
 
 use crate::{convert::SkinItem, minecraft::*};
 use putpng::crc::Crc32;
@@ -8,7 +8,7 @@ use tinywad::models::operation::WadOp;
 pub fn get_acc() -> Option<std::path::PathBuf> {
     if let Ok(acc) = which::which("acc") {
         Some(acc)
-    } else if cfg!(target_os = "linux") && std::path::Path::new("acc").exists() {
+    } else if cfg!(target_os = "linux") && Path::new("acc").exists() {
         Some("./acc".into())
     } else {
         None
@@ -23,10 +23,11 @@ pub fn convert(
     context: &Context,
     camera: &mut Camera,
     crc: &Crc32,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     sprite.replace_range(3..4, "]");
-    render_fists(path, &sprite, viewport, context, camera)?;
-    consume_fists(fists_wad, crc)?;
+    render_fists(path, &sprite, viewport, context, camera, temp)?;
+    consume_fists(fists_wad, crc, temp)?;
     Ok(())
 }
 
@@ -36,6 +37,7 @@ fn render_fists(
     viewport: &Viewport,
     context: &Context,
     camera: &mut Camera,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     let mut target = Texture2D::new_empty::<[u8; 4]>(
         &context,
@@ -110,6 +112,7 @@ fn render_fists(
             &mut depth,
             camera,
             &light,
+            temp,
         )?;
     }
 
@@ -129,6 +132,7 @@ fn render_fist(
     depth: &mut DepthTexture2D,
     camera: &Camera,
     light: &AmbientLight,
+    temp: &Path,
 ) -> anyhow::Result<()> {
     let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
         .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
@@ -152,16 +156,19 @@ fn render_fist(
             ..Default::default()
         }
         .serialize(
-            std::path::Path::new("temp")
-                .join("fists")
+            temp.join("fists")
                 .join(format!("{sprite}{frame_index}0.png")),
         )?,
     )?;
     Ok(())
 }
 
-fn consume_fists(fists_wad: &mut tinywad::wad::Wad, crc: &Crc32) -> anyhow::Result<()> {
-    let mut paths = std::fs::read_dir(std::path::Path::new("temp").join("fists"))
+fn consume_fists(
+    fists_wad: &mut tinywad::wad::Wad,
+    crc: &Crc32,
+    temp: &Path,
+) -> anyhow::Result<()> {
+    let mut paths = std::fs::read_dir(temp.join("fists"))
         .map(|d| d.map(|p| p.unwrap().path().to_str().unwrap().to_string()))?
         .collect::<Vec<_>>();
     paths.sort();

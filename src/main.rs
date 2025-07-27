@@ -5,15 +5,16 @@ mod minecraft;
 
 use crate::convert::*;
 use color_eyre::Result;
-use crossterm::event::{self, poll, Event, KeyCode, KeyEventKind};
-use ratatui::style::{palette::tailwind, Color, Modifier, Style};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, poll};
+use ratatui::style::{Color, Modifier, Style, palette::tailwind};
 use ratatui::{
+    DefaultTerminal, Frame,
     layout::{Constraint, Flex, Layout, Margin, Rect},
     style::Stylize,
     text::{Line, Text},
     widgets::{Block, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarState, Table, TableState},
-    DefaultTerminal, Frame,
 };
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tui_prompts::prelude::*;
 
@@ -345,7 +346,7 @@ impl ItemPrompt {
                 let path = self.path.value();
                 if !path.ends_with(".png") {
                     self.path_error = "Must be a png file!".into();
-                } else if !std::path::Path::new(path).exists() {
+                } else if !Path::new(path).exists() {
                     self.path_error = "Does not exist!".into();
                 } else {
                     *self.path.status_mut() = Status::Done;
@@ -471,7 +472,7 @@ impl FilePrompt {
     fn save_csv(&self, app: &App) {
         let file_name = self.file_name.value();
 
-        if std::path::Path::new(file_name).exists() {
+        if Path::new(file_name).exists() {
             std::fs::remove_file(file_name).unwrap();
         }
 
@@ -504,7 +505,7 @@ impl FilePrompt {
         let file_name = self.file_name.value();
         if !file_name.ends_with(".csv") {
             self.error = "Must be a csv file!".into();
-        } else if !self.save && !std::path::Path::new(file_name).exists() {
+        } else if !self.save && !Path::new(file_name).exists() {
             self.error = "Does not exist!".into();
         } else {
             *self.file_name.status_mut() = Status::Done;
@@ -575,7 +576,7 @@ impl Context for ConvertPrompt {
 
 struct FistsConfirm {
     file_name: String,
-    acc: std::path::PathBuf,
+    acc: PathBuf,
 }
 
 impl Context for FistsConfirm {
@@ -609,7 +610,7 @@ impl Context for FistsConfirm {
 }
 
 impl FistsConfirm {
-    fn new(file_name: String, acc: std::path::PathBuf) -> Self {
+    fn new(file_name: String, acc: PathBuf) -> Self {
         Self { file_name, acc }
     }
 }
@@ -628,11 +629,11 @@ impl ConvertPrompt {
 
 struct Converting {
     file_name: String,
-    acc: Option<std::path::PathBuf>,
+    acc: Option<PathBuf>,
 }
 
 impl Converting {
-    fn new(file_name: String, acc: Option<std::path::PathBuf>) -> Self {
+    fn new(file_name: String, acc: Option<PathBuf>) -> Self {
         Self { file_name, acc }
     }
 }

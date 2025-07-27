@@ -1,4 +1,6 @@
 use putpng::crc::Crc32;
+use std::path::{Path, PathBuf};
+use tempfile::tempdir;
 use three_d::*;
 use tinywad::models::operation::WadOp;
 
@@ -19,7 +21,7 @@ impl SkinItem {
 pub fn convert_all(
     items: &Vec<SkinItem>,
     file_name: String,
-    acc: Option<std::path::PathBuf>,
+    acc: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let viewport = Viewport::new_at_origo(204, 128);
     let context = HeadlessContext::new()?;
@@ -35,10 +37,6 @@ pub fn convert_all(
     );
     let crc = Crc32::new();
 
-    let temp = std::path::Path::new("temp");
-    if temp.exists() {
-        std::fs::remove_dir_all(temp)?;
-    }
     let mut wad = tinywad::wad::Wad::new();
     wad.set_kind(tinywad::wad::WadKind::Pwad);
     let mut fists_wad = tinywad::wad::Wad::new();
@@ -56,10 +54,11 @@ pub fn convert_all(
         mugshot,
     } in items.iter()
     {
-        std::fs::create_dir_all(temp.join("sprites"))?;
-        std::fs::create_dir(temp.join("mugshots"))?;
-        std::fs::create_dir(temp.join("crouch_sprites"))?;
-        std::fs::create_dir(temp.join("fists"))?;
+        let temp = tempdir().unwrap();
+        std::fs::create_dir(temp.path().join("sprites"))?;
+        std::fs::create_dir(temp.path().join("mugshots"))?;
+        std::fs::create_dir(temp.path().join("crouch_sprites"))?;
+        std::fs::create_dir(temp.path().join("fists"))?;
         convert(
             &name,
             &path,
@@ -70,6 +69,7 @@ pub fn convert_all(
             &context,
             &mut camera,
             &crc,
+            &temp.path(),
         )?;
         if acc.is_some() {
             crate::fists::convert(
@@ -80,9 +80,9 @@ pub fn convert_all(
                 &context,
                 &mut camera,
                 &crc,
+                &temp.path(),
             )?;
         }
-        std::fs::remove_dir_all(temp)?;
         camera = Camera::new_perspective(
             viewport,
             Vec3::unit_z() * depth,
@@ -112,8 +112,9 @@ fn convert(
     context: &Context,
     camera: &mut Camera,
     crc: &Crc32,
+    temp: &Path,
 ) -> anyhow::Result<()> {
-    crate::minecraft::render_images(path, sprite, mugshot, viewport, context, camera)?;
-    crate::doom::consume_images(name, sprite, mugshot, wad, crc)?;
+    crate::minecraft::render_images(path, sprite, mugshot, viewport, context, camera, temp)?;
+    crate::doom::consume_images(name, sprite, mugshot, wad, crc, temp)?;
     Ok(())
 }
