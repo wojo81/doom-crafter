@@ -6,6 +6,7 @@ mod minecraft;
 use crate::convert::*;
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, poll};
+use csv::Reader;
 use ratatui::style::{Color, Modifier, Style, palette::tailwind};
 use ratatui::{
     DefaultTerminal, Frame,
@@ -14,6 +15,8 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarState, Table, TableState},
 };
+use std::fs::File;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tui_prompts::prelude::*;
@@ -32,14 +35,14 @@ struct Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            bg: tailwind::SLATE.c800,
-            fg: tailwind::SLATE.c300,
-            accent: tailwind::CYAN.c400,
-            header_bg: tailwind::SLATE.c700,
-            header_fg: tailwind::CYAN.c500,
-            selected_bg: tailwind::CYAN.c500,
+            bg: tailwind::SLATE.c900,
+            fg: tailwind::SLATE.c200,
+            accent: tailwind::EMERALD.c400,
+            header_bg: tailwind::SLATE.c800,
+            header_fg: tailwind::EMERALD.c300,
+            selected_bg: tailwind::EMERALD.c500,
             selected_fg: Color::White,
-            border: tailwind::CYAN.c300,
+            border: tailwind::EMERALD.c300,
         }
     }
 }
@@ -182,8 +185,8 @@ impl Context for QuitConfirm {
         if let Event::Key(key) = event {
             if key.kind == KeyEventKind::Press {
                 match key.code {
-                    KeyCode::Char('y') | KeyCode::Esc => app.quit = true,
-                    KeyCode::Char('n') | KeyCode::Down => return None,
+                    KeyCode::Char('y') => app.quit = true,
+                    KeyCode::Char('n') => return None,
                     _ => return Some(self),
                 }
             }
@@ -448,7 +451,7 @@ impl Context for FilePrompt {
             .margin(2)
             .split(areas[0]);
         TextPrompt::from("File name").draw(frame, areas[0], &mut self.file_name);
-        frame.render_widget(Line::from(self.error.clone()), areas[1]);
+        frame.render_widget(Line::from(self.error.clone()).red(), areas[1]);
     }
 }
 
@@ -491,9 +494,7 @@ impl FilePrompt {
 
     fn load_csv(&self, app: &mut App) {
         let file_name = self.file_name.value();
-        let mut reader = csv::Reader::from_reader(std::io::BufReader::new(
-            std::fs::File::open(file_name).unwrap(),
-        ));
+        let mut reader = Reader::from_reader(BufReader::new(File::open(file_name).unwrap()));
 
         for result in reader.deserialize() {
             app.items.push(result.unwrap());

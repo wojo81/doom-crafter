@@ -56,7 +56,6 @@ fn render_fists(
         Wrapping::ClampToEdge,
         Wrapping::ClampToEdge,
     );
-    let light = AmbientLight::new(context, 1.0, Srgba::WHITE);
 
     let position = Vec3::unit_x() * 3.5;
     let mut arm = Limb::load(
@@ -111,7 +110,6 @@ fn render_fists(
             &mut target,
             &mut depth,
             camera,
-            &light,
             temp,
         )?;
     }
@@ -131,7 +129,6 @@ fn render_fist(
     target: &mut Texture2D,
     depth: &mut DepthTexture2D,
     camera: &Camera,
-    light: &AmbientLight,
     temp: &Path,
 ) -> anyhow::Result<()> {
     let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
@@ -142,7 +139,7 @@ fn render_fist(
                 .iter()
                 .map(|f| &f.model)
                 .chain(sleeve.texels.iter().map(|t| &t.model)),
-            &[&light],
+            &[],
         )
         .read_color();
 
@@ -207,12 +204,12 @@ pub fn finalize(
         "S_END",
     ))?;
     {
-        let mut s = String::new();
+        let mut code = String::new();
         for (i, item) in items.iter().enumerate() {
             let i = i + 1;
             let mut sprite = format!("\"{}\"", item.sprite);
             sprite.replace_range(4..5, "]");
-            s.push_str(&indoc::formatdoc!(
+            code.push_str(&indoc::formatdoc!(
                 r#"
             actor Fist_{i} : Weapon replaces Fist {{
                 Tag "$FIST"
@@ -243,7 +240,7 @@ pub fn finalize(
         }
         fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
             tinywad::lump::LumpAddKind::Back,
-            &s.into_bytes(),
+            &code.into_bytes(),
             "DECORATE",
         ))?;
     }
@@ -270,19 +267,19 @@ pub fn finalize(
         let removal = indoc::formatdoc!(
             r#"
                 if (lastSkin == 0) takeInventory("Fist", 1);
-                {}
+            {}
             "#,
             (1..=items.len())
-                .map(|i| format!("else if (lastSkin == {i}) takeInventory(\"Fist_{i}\", 1);\n"))
+                .map(|i| format!("\telse if (lastSkin == {i}) takeInventory(\"Fist_{i}\", 1);\n"))
                 .collect::<String>()
         );
         let retrieval = indoc::formatdoc!(
             r#"
                if (skin == 0) giveInventory("Fist", 1);
-               {}
+            {}
             "#,
             (1..=items.len())
-                .map(|i| format!("else if (skin == {i}) giveInventory(\"Fist_{i}\", 1);\n"))
+                .map(|i| format!("\telse if (skin == {i}) giveInventory(\"Fist_{i}\", 1);\n"))
                 .collect::<String>()
         );
         let acs = indoc::formatdoc!(
