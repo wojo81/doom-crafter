@@ -1,9 +1,11 @@
-use std::{f32::consts::PI, path::Path};
-
-use crate::{convert::SkinItem, minecraft::*};
+use crate::{
+    convert::{Rendering, SkinItem},
+    doom::PushLump,
+    minecraft::*,
+};
 use putpng::crc::Crc32;
+use std::{f32::consts::PI, path::Path};
 use three_d::*;
-use tinywad::models::operation::WadOp;
 
 pub fn get_acc() -> Option<std::path::PathBuf> {
     if let Ok(acc) = which::which("acc") {
@@ -19,30 +21,26 @@ pub fn convert(
     path: &str,
     mut sprite: String,
     fists_wad: &mut tinywad::wad::Wad,
-    viewport: &Viewport,
-    context: &Context,
-    camera: &mut Camera,
+    rendering: &mut Rendering,
     crc: &Crc32,
     temp: &Path,
 ) -> anyhow::Result<()> {
     sprite.replace_range(3..4, "]");
-    render_fists(path, &sprite, viewport, context, camera, temp)?;
+    render_fists(path, &sprite, rendering, temp)?;
     consume_fists(fists_wad, crc, temp)?;
     Ok(())
 }
 
-fn render_fists(
+pub fn render_fists(
     path: &str,
     sprite: &str,
-    viewport: &Viewport,
-    context: &Context,
-    camera: &mut Camera,
+    rendering: &mut Rendering,
     temp: &Path,
 ) -> anyhow::Result<()> {
     let mut target = Texture2D::new_empty::<[u8; 4]>(
-        &context,
-        viewport.width,
-        viewport.height,
+        &rendering.context,
+        rendering.viewport.width,
+        rendering.viewport.height,
         Interpolation::Nearest,
         Interpolation::Nearest,
         None,
@@ -50,9 +48,9 @@ fn render_fists(
         Wrapping::ClampToEdge,
     );
     let mut depth = DepthTexture2D::new::<f32>(
-        &context,
-        viewport.width,
-        viewport.height,
+        &rendering.context,
+        rendering.viewport.width,
+        rendering.viewport.height,
         Wrapping::ClampToEdge,
         Wrapping::ClampToEdge,
     );
@@ -63,20 +61,20 @@ fn render_fists(
         "arm".into(),
         Patch::RIGHT_ARM,
         position,
-        context,
+        &rendering.context,
     );
     let mut sleeve = Trim::load(
         &image::open(path)?,
         "arm".into(),
         Patch::RIGHT_SLEEVE,
         position,
-        context,
+        &rendering.context,
     );
 
     let delta = 22.5;
 
-    camera.rotate_around(Vec3::zero(), PI, 0.0);
-    camera.translate(Vec3::unit_z() * -delta);
+    rendering.camera.rotate_around(Vec3::zero(), PI, 0.0);
+    rendering.camera.translate(Vec3::unit_z() * -delta);
 
     for frame_index in 'A'..='I' {
         let rotation = [
@@ -106,16 +104,16 @@ fn render_fists(
             &sleeve,
             sprite,
             frame_index,
-            viewport,
+            &rendering.viewport,
             &mut target,
             &mut depth,
-            camera,
+            &rendering.camera,
             temp,
         )?;
     }
 
-    camera.translate(Vec3::unit_z() * delta);
-    camera.rotate_around(Vec3::zero(), PI, 0.0);
+    rendering.camera.translate(Vec3::unit_z() * delta);
+    rendering.camera.rotate_around(Vec3::zero(), PI, 0.0);
 
     Ok(())
 }
@@ -160,7 +158,7 @@ fn render_fist(
     Ok(())
 }
 
-fn consume_fists(
+pub fn consume_fists(
     fists_wad: &mut tinywad::wad::Wad,
     crc: &Crc32,
     temp: &Path,
@@ -180,17 +178,47 @@ fn consume_fists(
     putpng::crop::crop_all(paths.iter().map(|s| s.clone()), crc).unwrap();
 
     for path in paths {
-        fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
-            tinywad::lump::LumpAddKind::Back,
+        fists_wad.push_lump(
             &std::fs::read(&path)?,
             &std::path::Path::new(&path)
                 .file_stem()
                 .unwrap()
                 .to_str()
                 .unwrap(),
-        ))?;
+        )?;
     }
     Ok(())
+}
+
+pub fn generate_fist(sprite: &str, index: usize) -> String {
+    indoc::formatdoc!(
+        r#"
+        ACTOR Fist_{index} : Weapon replaces Fist {{
+            Tag "$FIST"
+            Weapon.SlotNumber 1
+            Weapon.SelectionOrder 1
+            +Weapon.NOAUTOFIRE
+            +Weapon.MELEEWEAPON
+
+            States {{
+            Ready:
+                {sprite} A 1 A_WeaponReady
+                Loop
+            Select:
+                {sprite} A 1 A_Raise
+                Loop
+            Deselect:
+                {sprite} A 1 A_Lower
+                Loop
+            Fire:
+                {sprite} B 2 A_Punch
+                {sprite} CDEFGHI 2
+                TNT1 A 0 A_Refire
+                Goto Ready
+            }}
+        }}
+        "#
+    )
 }
 
 pub fn finalize(
@@ -198,71 +226,24 @@ pub fn finalize(
     acc: std::path::PathBuf,
     items: &Vec<SkinItem>,
 ) -> anyhow::Result<tinywad::wad::Wad> {
-    fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
-        tinywad::lump::LumpAddKind::Back,
-        &vec![],
-        "S_END",
-    ))?;
+    fists_wad.push_lump(&vec![], "S_END")?;
     {
         let mut code = String::new();
         for (i, item) in items.iter().enumerate() {
             let i = i + 1;
             let mut sprite = format!("\"{}\"", item.sprite);
             sprite.replace_range(4..5, "]");
-            code.push_str(&indoc::formatdoc!(
-                r#"
-            actor Fist_{i} : Weapon replaces Fist {{
-                Tag "$FIST"
-                Weapon.SlotNumber 1
-                Weapon.SelectionOrder 1
-                +Weapon.NOAUTOFIRE
-                +Weapon.MELEEWEAPON
-
-                States {{
-                Ready:
-                    {sprite} A 1 A_WeaponReady
-                    loop
-                Select:
-                    {sprite} A 1 A_Raise
-                    loop
-                Deselect:
-                    {sprite} A 1 A_Lower
-                    loop
-                Fire:
-                    {sprite} B 2 A_Punch
-                    {sprite} CDEFGHI 2
-                    TNT1 A 0 A_Refire
-                    goto Ready
-                }}
-            }}
-            "#
-            ))
+            code += &generate_fist(&sprite, i);
         }
-        fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
-            tinywad::lump::LumpAddKind::Back,
-            &code.into_bytes(),
-            "DECORATE",
-        ))?;
+        fists_wad.push_lump(&code.into_bytes(), "DECORATE")?;
     }
 
-    fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
-        tinywad::lump::LumpAddKind::Back,
-        &"[enu default]\nFIST = \"Fist\";\0".to_string().into_bytes(),
+    fists_wad.push_lump(
+        &"[enu default]\nFIST = \"Fist\";\0".as_bytes().to_vec(),
         "LANGUAGE",
-    ))?;
-
-    fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
-        tinywad::lump::LumpAddKind::Back,
-        &"pickfist".to_string().into_bytes(),
-        "LOADACS",
-    ))?;
-
-    fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
-        tinywad::lump::LumpAddKind::Back,
-        &vec![],
-        "A_START",
-    ))?;
-
+    )?;
+    fists_wad.push_lump(&"pickfist".as_bytes().to_vec(), "LOADACS")?;
+    fists_wad.push_lump(&vec![], "A_START")?;
     {
         let removal = indoc::formatdoc!(
             r#"
@@ -308,17 +289,8 @@ pub fn finalize(
             .output()
             .unwrap();
     }
-    fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
-        tinywad::lump::LumpAddKind::Back,
-        &std::fs::read("PICKFIST.o").unwrap(),
-        "PICKFIST",
-    ))?;
-
-    fists_wad.add_lump_raw(tinywad::lump::LumpAdd::new(
-        tinywad::lump::LumpAddKind::Back,
-        &vec![],
-        "A_END",
-    ))?;
+    fists_wad.push_lump(&std::fs::read("PICKFIST.o").unwrap(), "PICKFIST")?;
+    fists_wad.push_lump(&vec![], "A_END")?;
 
     std::fs::remove_file("PICKFIST.acs").unwrap();
     std::fs::remove_file("PICKFIST.o").unwrap();

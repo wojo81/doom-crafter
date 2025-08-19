@@ -530,23 +530,15 @@ impl Default for ConvertPrompt {
 }
 
 impl Context for ConvertPrompt {
-    fn handle_event(mut self: Box<Self>, app: &mut App, event: Event) -> Option<Box<dyn Context>> {
+    fn handle_event(mut self: Box<Self>, _app: &mut App, event: Event) -> Option<Box<dyn Context>> {
         if let Event::Key(key) = event {
             match key.code {
                 KeyCode::Esc => return None,
                 KeyCode::Enter => {
                     if self.file_name.status().is_done() {
-                        if let Some(acc) = crate::fists::get_acc() {
-                            return Some(Box::new(FistsConfirm::new(
-                                self.file_name.value().into(),
-                                acc,
-                            )));
-                        } else {
-                            return Some(Box::new(Converting::new(
-                                self.file_name.value().into(),
-                                None,
-                            )));
-                        }
+                        return Some(Box::new(GenerationPrompt::new(
+                            self.file_name.value().to_string(),
+                        )));
                     }
                 }
                 _ => {
@@ -575,6 +567,65 @@ impl Context for ConvertPrompt {
     }
 }
 
+impl ConvertPrompt {
+    fn validate(&mut self) {
+        *self.file_name.status_mut() = Status::Aborted;
+        if !self.file_name.value().ends_with(".wad") {
+            self.error = "Must be a wad file!".into();
+        } else {
+            *self.file_name.status_mut() = Status::Done;
+            self.error.clear();
+        }
+    }
+}
+
+struct GenerationPrompt {
+    file_name: String,
+}
+
+impl Context for GenerationPrompt {
+    fn handle_event(self: Box<Self>, app: &mut App, event: Event) -> Option<Box<dyn Context>> {
+        if let Event::Key(key) = event {
+            match key.code {
+                KeyCode::Esc => return None,
+                KeyCode::Char('p') => {
+                    return Some(Box::new(Converting::new(self.file_name, None, false)));
+                }
+                KeyCode::Char('s') => {
+                    if let Some(acc) = crate::fists::get_acc() {
+                        return Some(Box::new(FistsConfirm::new(self.file_name, acc)));
+                    } else {
+                        return Some(Box::new(Converting::new(self.file_name, None, true)));
+                    }
+                }
+                _ => (),
+            }
+        }
+        Some(self)
+    }
+
+    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
+        let popup = Paragraph::new("Would you like to generate player classes or skins?")
+            .centered()
+            .block(Block::bordered());
+        let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
+            .split(popup_area(frame.area(), 70, 70));
+        frame.render_widget(Clear, areas[0]);
+        frame.render_widget(Clear, areas[1]);
+        frame.render_widget(popup, areas[0]);
+        frame.render_widget(
+            Line::from("(P) Player Classes (S) Skins").right_aligned(),
+            areas[1],
+        );
+    }
+}
+
+impl GenerationPrompt {
+    fn new(file_name: String) -> Self {
+        Self { file_name }
+    }
+}
+
 struct FistsConfirm {
     file_name: String,
     acc: PathBuf,
@@ -586,10 +637,14 @@ impl Context for FistsConfirm {
             match key.code {
                 KeyCode::Esc => return None,
                 KeyCode::Char('y') => {
-                    return Some(Box::new(Converting::new(self.file_name, Some(self.acc))));
+                    return Some(Box::new(Converting::new(
+                        self.file_name,
+                        Some(self.acc),
+                        true,
+                    )));
                 }
                 KeyCode::Char('n') => {
-                    return Some(Box::new(Converting::new(self.file_name, None)));
+                    return Some(Box::new(Converting::new(self.file_name, None, true)));
                 }
                 _ => (),
             }
@@ -616,33 +671,32 @@ impl FistsConfirm {
     }
 }
 
-impl ConvertPrompt {
-    fn validate(&mut self) {
-        *self.file_name.status_mut() = Status::Aborted;
-        if !self.file_name.value().ends_with(".wad") {
-            self.error = "Must be a wad file!".into();
-        } else {
-            *self.file_name.status_mut() = Status::Done;
-            self.error.clear();
-        }
-    }
-}
-
 struct Converting {
     file_name: String,
     acc: Option<PathBuf>,
+    as_skins: bool,
 }
 
 impl Converting {
-    fn new(file_name: String, acc: Option<PathBuf>) -> Self {
-        Self { file_name, acc }
+    fn new(file_name: String, acc: Option<PathBuf>, as_skins: bool) -> Self {
+        Self {
+            file_name,
+            acc,
+            as_skins,
+        }
     }
 }
 
 impl Context for Converting {
     fn handle_event(self: Box<Self>, app: &mut App, _event: Event) -> Option<Box<dyn Context>> {
         let _gag = gag::Gag::stdout().unwrap();
-        crate::convert::convert_all(&app.items, self.file_name.clone(), self.acc.clone()).unwrap();
+        crate::convert::convert_all(
+            &app.items,
+            self.file_name.clone(),
+            self.acc.clone(),
+            self.as_skins,
+        )
+        .unwrap();
         while poll(Duration::from_millis(0)).unwrap() {
             event::read().unwrap();
         }
