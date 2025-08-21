@@ -1,9 +1,8 @@
-mod convert;
-mod doom;
-mod fists;
-mod minecraft;
+mod converting;
+mod producing;
+mod rendering;
 
-use crate::convert::*;
+use crate::converting::*;
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, poll};
 use csv::Reader;
@@ -63,26 +62,32 @@ impl MainContext {
         if let Event::Key(key) = event {
             if key.kind == KeyEventKind::Press {
                 match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => {
+                    KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                         app.subcontext = Some(Box::new(QuitConfirm));
                     }
-                    KeyCode::Char('j') | KeyCode::Down => self.table.select_next(),
-                    KeyCode::Char('k') | KeyCode::Up => self.table.select_previous(),
-                    KeyCode::Char('a') => app.subcontext = Some(Box::new(ItemPrompt::add())),
-                    KeyCode::Char('e') => {
+                    KeyCode::Char('j') | KeyCode::Char('J') | KeyCode::Down => {
+                        self.table.select_next()
+                    }
+                    KeyCode::Char('k') | KeyCode::Char('K') | KeyCode::Up => {
+                        self.table.select_previous()
+                    }
+                    KeyCode::Char('a') | KeyCode::Char('A') => {
+                        app.subcontext = Some(Box::new(ItemPrompt::add()))
+                    }
+                    KeyCode::Char('e') | KeyCode::Char('E') => {
                         if let Some(i) = self.table.selected() {
                             app.subcontext = Some(Box::new(ItemPrompt::edit(&app.items[i], i)));
                         }
                     }
-                    KeyCode::Char('d') => {
+                    KeyCode::Char('d') | KeyCode::Char('D') => {
                         if let Some(i) = self.table.selected() {
                             app.items.remove(i);
                         }
                     }
-                    KeyCode::Char('s') if !app.items.is_empty() => {
+                    KeyCode::Char('s') | KeyCode::Char('S') if !app.items.is_empty() => {
                         app.subcontext = Some(Box::new(FilePrompt::save()))
                     }
-                    KeyCode::Char('l') if app.items.is_empty() => {
+                    KeyCode::Char('l') | KeyCode::Char('L') if app.items.is_empty() => {
                         app.subcontext = Some(Box::new(FilePrompt::load()))
                     }
                     KeyCode::Enter if !app.items.is_empty() => {
@@ -94,7 +99,7 @@ impl MainContext {
         }
     }
 
-    fn draw(&mut self, theme: &Theme, items: &Vec<SkinItem>, frame: &mut Frame) {
+    fn draw(&mut self, theme: &Theme, items: &Vec<SkinData>, frame: &mut Frame) {
         let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(3)]);
         let areas = vertical.split(frame.area());
 
@@ -103,8 +108,8 @@ impl MainContext {
         self.draw_footer(theme, frame, areas[1]);
     }
 
-    fn draw_table(&mut self, theme: &Theme, items: &Vec<SkinItem>, frame: &mut Frame, area: Rect) {
-        let header = ["Name", "Path", "Sprite", "Mugshot"]
+    fn draw_table(&mut self, theme: &Theme, items: &Vec<SkinData>, frame: &mut Frame, area: Rect) {
+        let header = ["Name", "Path", "Sprite"]
             .into_iter()
             .map(|h| {
                 Cell::from(h).style(
@@ -117,10 +122,10 @@ impl MainContext {
             .collect::<Row>()
             .height(1);
         let rows = items.iter().map(|data| {
-            data.ref_array()
+            data.as_refs()
                 .into_iter()
                 .map(|content| {
-                    Cell::from(Text::from(content.clone()))
+                    Cell::from(Text::from(content))
                         .style(Style::default().fg(theme.fg).bg(theme.bg))
                 })
                 .collect::<Row>()
@@ -131,8 +136,7 @@ impl MainContext {
             [
                 Constraint::Min(10),
                 Constraint::Min(10),
-                Constraint::Length(8),
-                Constraint::Length(8),
+                Constraint::Length(10),
             ],
         )
         .header(header)
@@ -185,8 +189,8 @@ impl Context for QuitConfirm {
         if let Event::Key(key) = event {
             if key.kind == KeyEventKind::Press {
                 match key.code {
-                    KeyCode::Char('y') => app.quit = true,
-                    KeyCode::Char('n') => return None,
+                    KeyCode::Char('y') | KeyCode::Char('Y') => app.quit = true,
+                    KeyCode::Char('n') | KeyCode::Char('N') => return None,
                     _ => return Some(self),
                 }
             }
@@ -194,7 +198,7 @@ impl Context for QuitConfirm {
         Some(self)
     }
 
-    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
+    fn draw(&mut self, _theme: &Theme, frame: &mut Frame) {
         let popup = Paragraph::new("Are you ready to quit?")
             .centered()
             .block(Block::bordered());
@@ -212,12 +216,10 @@ struct ItemPrompt {
     name: TextState<'static>,
     path: TextState<'static>,
     sprite: TextState<'static>,
-    mugshot: TextState<'static>,
     item_field: ItemField,
     name_error: String,
     path_error: String,
     sprite_error: String,
-    mugshot_error: String,
     edit: Option<usize>,
 }
 
@@ -232,7 +234,6 @@ impl Context for ItemPrompt {
                     if self.name.status().is_done()
                         && self.path.status().is_done()
                         && self.sprite.status().is_done()
-                        && self.mugshot.status().is_done()
                     {
                         self.submit_item_prompt(app);
                         return None;
@@ -247,7 +248,7 @@ impl Context for ItemPrompt {
         Some(self)
     }
 
-    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
+    fn draw(&mut self, _theme: &Theme, frame: &mut Frame) {
         let popup = Block::bordered();
         let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
             .split(popup_area(frame.area(), 70, 70));
@@ -259,18 +260,16 @@ impl Context for ItemPrompt {
             areas[1],
         );
 
-        let areas = Layout::vertical(vec![Constraint::Length(1); 8])
+        let areas = Layout::vertical(vec![Constraint::Length(1); 6])
             .margin(2)
             .split(areas[0]);
         TextPrompt::from("Name").draw(frame, areas[0], &mut self.name);
         TextPrompt::from("Path").draw(frame, areas[2], &mut self.path);
         TextPrompt::from("Sprite").draw(frame, areas[4], &mut self.sprite);
-        TextPrompt::from("Mugshot").draw(frame, areas[6], &mut self.mugshot);
 
         frame.render_widget(Line::from(self.name_error.clone()).red(), areas[1]);
         frame.render_widget(Line::from(self.path_error.clone()).red(), areas[3]);
         frame.render_widget(Line::from(self.sprite_error.clone()).red(), areas[5]);
-        frame.render_widget(Line::from(self.mugshot_error.clone()).red(), areas[7]);
     }
 }
 
@@ -291,12 +290,11 @@ impl ItemPrompt {
         }
     }
 
-    fn edit(item: &SkinItem, index: usize) -> Self {
+    fn edit(item: &SkinData, index: usize) -> Self {
         Self {
             name: new_text_state(&item.name).with_focus(FocusState::Focused),
             path: new_text_state(&item.path),
-            sprite: new_text_state(&item.sprite),
-            mugshot: new_text_state(&item.mugshot),
+            sprite: new_text_state(&item.sprite_prefix),
             edit: Some(index),
             ..Default::default()
         }
@@ -307,7 +305,6 @@ impl ItemPrompt {
             ItemField::Name => &mut self.name,
             ItemField::Path => &mut self.path,
             ItemField::Sprite => &mut self.sprite,
-            ItemField::Mugshot => &mut self.mugshot,
         }
     }
 
@@ -316,8 +313,7 @@ impl ItemPrompt {
         self.item_field = match self.item_field {
             ItemField::Name => ItemField::Path,
             ItemField::Path => ItemField::Sprite,
-            ItemField::Sprite => ItemField::Mugshot,
-            ItemField::Mugshot => ItemField::Name,
+            ItemField::Sprite => ItemField::Name,
         };
         self.field().focus();
     }
@@ -325,10 +321,9 @@ impl ItemPrompt {
     fn retreat_field(&mut self) {
         self.field().blur();
         self.item_field = match self.item_field {
-            ItemField::Name => ItemField::Mugshot,
+            ItemField::Name => ItemField::Sprite,
             ItemField::Path => ItemField::Name,
             ItemField::Sprite => ItemField::Path,
-            ItemField::Mugshot => ItemField::Sprite,
         };
         self.field().focus();
     }
@@ -359,8 +354,8 @@ impl ItemPrompt {
             ItemField::Sprite => {
                 *self.sprite.status_mut() = Status::Aborted;
                 let sprite = self.sprite.value();
-                if sprite.len() != 4 {
-                    self.sprite_error = "Must be 4 characters long!".into();
+                if sprite.len() != 3 {
+                    self.sprite_error = "Must be 3 characters long!".into();
                 } else if !validate_sprite(sprite) {
                     self.sprite_error =
                         "Must only contain alphabetic characters or ('[', ']', '\\')".into();
@@ -369,28 +364,14 @@ impl ItemPrompt {
                     self.sprite_error.clear();
                 }
             }
-            ItemField::Mugshot => {
-                *self.mugshot.status_mut() = Status::Aborted;
-                let mugshot = self.mugshot.value();
-                if mugshot.len() != 3 {
-                    self.mugshot_error = "Must be 3 character long!".into();
-                } else if !validate_sprite(mugshot) {
-                    self.mugshot_error =
-                        "Must only contain alphabetic characters or ('[', ']', '\\')".into();
-                } else {
-                    *self.mugshot.status_mut() = Status::Done;
-                    self.mugshot_error.clear();
-                }
-            }
         }
     }
 
     fn submit_item_prompt(&mut self, app: &mut App) {
-        let item = SkinItem {
+        let item = SkinData {
             name: self.name.value().into(),
             path: self.path.value().into(),
-            sprite: self.sprite.value().to_uppercase(),
-            mugshot: self.mugshot.value().to_uppercase(),
+            sprite_prefix: self.sprite.value().to_uppercase(),
         };
         if let Some(index) = self.edit {
             let _ = std::mem::replace(&mut app.items[index], item);
@@ -430,7 +411,7 @@ impl Context for FilePrompt {
         Some(self)
     }
 
-    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
+    fn draw(&mut self, _theme: &Theme, frame: &mut Frame) {
         let popup = Block::bordered();
         let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
             .split(popup_area(frame.area(), 70, 70));
@@ -550,7 +531,7 @@ impl Context for ConvertPrompt {
         Some(self)
     }
 
-    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
+    fn draw(&mut self, _theme: &Theme, frame: &mut Frame) {
         let popup = Block::bordered();
         let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
             .split(popup_area(frame.area(), 70, 70));
@@ -584,16 +565,16 @@ struct GenerationPrompt {
 }
 
 impl Context for GenerationPrompt {
-    fn handle_event(self: Box<Self>, app: &mut App, event: Event) -> Option<Box<dyn Context>> {
+    fn handle_event(self: Box<Self>, _app: &mut App, event: Event) -> Option<Box<dyn Context>> {
         if let Event::Key(key) = event {
             match key.code {
                 KeyCode::Esc => return None,
-                KeyCode::Char('p') => {
+                KeyCode::Char('d') | KeyCode::Char('D') => {
                     return Some(Box::new(Converting::new(self.file_name, None, false)));
                 }
-                KeyCode::Char('s') => {
-                    if let Some(acc) = crate::fists::get_acc() {
-                        return Some(Box::new(FistsConfirm::new(self.file_name, acc)));
+                KeyCode::Char('s') | KeyCode::Char('S') => {
+                    if let Some(acc) = get_acc() {
+                        return Some(Box::new(FistConfirm::new(self.file_name, acc)));
                     } else {
                         return Some(Box::new(Converting::new(self.file_name, None, true)));
                     }
@@ -604,17 +585,21 @@ impl Context for GenerationPrompt {
         Some(self)
     }
 
-    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
-        let popup = Paragraph::new("Would you like to generate player classes or skins?")
-            .centered()
-            .block(Block::bordered());
+    fn draw(&mut self, _theme: &Theme, frame: &mut Frame) {
+        let popup = Block::bordered();
         let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
             .split(popup_area(frame.area(), 70, 70));
+        let mut text_area = areas[0].clone();
+        text_area.y += text_area.height / 2;
         frame.render_widget(Clear, areas[0]);
         frame.render_widget(Clear, areas[1]);
         frame.render_widget(popup, areas[0]);
         frame.render_widget(
-            Line::from("(P) Player Classes (S) Skins").right_aligned(),
+            Paragraph::new("Would you like to generate using DECORATE or S_SKIN?").centered(),
+            text_area,
+        );
+        frame.render_widget(
+            Line::from("(D) DECORATE (S) S_SKIN").right_aligned(),
             areas[1],
         );
     }
@@ -626,24 +611,24 @@ impl GenerationPrompt {
     }
 }
 
-struct FistsConfirm {
+struct FistConfirm {
     file_name: String,
     acc: PathBuf,
 }
 
-impl Context for FistsConfirm {
+impl Context for FistConfirm {
     fn handle_event(self: Box<Self>, _app: &mut App, event: Event) -> Option<Box<dyn Context>> {
         if let Event::Key(key) = event {
             match key.code {
                 KeyCode::Esc => return None,
-                KeyCode::Char('y') => {
+                KeyCode::Char('y') | KeyCode::Char('Y') => {
                     return Some(Box::new(Converting::new(
                         self.file_name,
                         Some(self.acc),
                         true,
                     )));
                 }
-                KeyCode::Char('n') => {
+                KeyCode::Char('n') | KeyCode::Char('N') => {
                     return Some(Box::new(Converting::new(self.file_name, None, true)));
                 }
                 _ => (),
@@ -652,20 +637,25 @@ impl Context for FistsConfirm {
         Some(self)
     }
 
-    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
-        let popup = Paragraph::new("ACC detected: Do you want to generate fists?")
-            .centered()
-            .block(Block::bordered());
+    fn draw(&mut self, _theme: &Theme, frame: &mut Frame) {
+        let popup = Block::bordered();
         let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
             .split(popup_area(frame.area(), 70, 70));
+        let mut text_area = areas[0].clone();
+        text_area.y += text_area.height / 2;
         frame.render_widget(Clear, areas[0]);
         frame.render_widget(Clear, areas[1]);
         frame.render_widget(popup, areas[0]);
+        frame.render_widget(
+            Paragraph::new("ACC detected: would you like to generate a separate fist wad?")
+                .centered(),
+            text_area,
+        );
         frame.render_widget(Line::from("(Y) Yes (N) No").right_aligned(), areas[1]);
     }
 }
 
-impl FistsConfirm {
+impl FistConfirm {
     fn new(file_name: String, acc: PathBuf) -> Self {
         Self { file_name, acc }
     }
@@ -690,13 +680,14 @@ impl Converting {
 impl Context for Converting {
     fn handle_event(self: Box<Self>, app: &mut App, _event: Event) -> Option<Box<dyn Context>> {
         let _gag = gag::Gag::stdout().unwrap();
-        crate::convert::convert_all(
-            &app.items,
-            self.file_name.clone(),
-            self.acc.clone(),
-            self.as_skins,
-        )
-        .unwrap();
+        let format = if !self.as_skins {
+            Format::DecorateWad
+        } else if self.acc.is_some() {
+            Format::S_SkinAndFistWads
+        } else {
+            Format::S_SkinWad
+        };
+        crate::converting::convert(&app.items, format, Path::new(&self.file_name)).unwrap();
         while poll(Duration::from_millis(0)).unwrap() {
             event::read().unwrap();
         }
@@ -708,14 +699,14 @@ impl Context for Converting {
         return Some(Box::new(success));
     }
 
-    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
+    fn draw(&mut self, _theme: &Theme, frame: &mut Frame) {
         let popup = Block::bordered();
 
-        let area = popup_area(frame.area(), 70, 70);
+        let mut area = popup_area(frame.area(), 70, 70);
         frame.render_widget(Clear, area);
         frame.render_widget(popup, area);
 
-        let area = Rect::new(area.x, area.y + area.height / 2, area.width, 1);
+        area.y += area.height / 2;
         frame.render_widget(Line::from("Converting...").centered(), area);
     }
 }
@@ -733,7 +724,7 @@ impl Context for Success {
         Some(self)
     }
 
-    fn draw(&mut self, theme: &Theme, frame: &mut Frame) {
+    fn draw(&mut self, _theme: &Theme, frame: &mut Frame) {
         let popup = Block::bordered();
         let areas = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
             .split(popup_area(frame.area(), 70, 70));
@@ -774,7 +765,7 @@ impl Success {
     fn new_with_fists(file_name: String) -> Self {
         Self {
             file_name: file_name.clone(),
-            fists_file_name: Some(file_name.replace('.', "_fists.")),
+            fists_file_name: Some(file_name.replace('.', "-fist.")),
         }
     }
 }
@@ -782,7 +773,7 @@ impl Success {
 #[derive(Default)]
 struct App {
     quit: bool,
-    items: Vec<SkinItem>,
+    items: Vec<SkinData>,
     subcontext: Option<Box<dyn Context>>,
     theme: Theme,
 }
@@ -825,7 +816,6 @@ enum ItemField {
     Name,
     Path,
     Sprite,
-    Mugshot,
 }
 
 fn main() {

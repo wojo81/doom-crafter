@@ -1,54 +1,55 @@
-use crate::convert::Rendering;
-use image::GenericImageView;
+use crate::converting::{Rendering, SpritePrefix};
+use anyhow::Context as WithContext;
+use image::{DynamicImage, GenericImageView};
 use std::{f32::consts::PI, path::Path};
 use three_d::*;
 
-pub fn render_images(
-    path: &str,
-    sprite: &str,
-    mugshot: &str,
-    rendering: &mut Rendering,
-    temp: &Path,
-) -> anyhow::Result<()> {
-    let mut target = Texture2D::new_empty::<[u8; 4]>(
-        &rendering.context,
-        rendering.viewport.width,
-        rendering.viewport.height,
-        Interpolation::Nearest,
-        Interpolation::Nearest,
-        None,
-        Wrapping::ClampToEdge,
-        Wrapping::ClampToEdge,
-    );
-    let mut depth = DepthTexture2D::new::<f32>(
-        &rendering.context,
-        rendering.viewport.width,
-        rendering.viewport.height,
-        Wrapping::ClampToEdge,
-        Wrapping::ClampToEdge,
-    );
-    let delta = 10.0;
-
-    render_sprites(path, sprite, rendering, &mut target, &mut depth, temp)?;
-    let mut sprite = sprite.to_string();
-    sprite.replace_range(3..4, "[");
-    render_crouch_sprites(path, &sprite, rendering, &mut target, &mut depth, temp)?;
-    rendering.camera.translate(Vec3::unit_z() * delta);
-    render_mugshots(path, mugshot, rendering, &mut target, &mut depth, temp)?;
-    rendering.camera.translate(Vec3::unit_z() * -delta);
-    Ok(())
+pub struct TargetTexture {
+    texture: Texture2D,
+    depth: DepthTexture2D,
 }
 
-pub fn render_sprites(
-    path: &str,
-    sprite: &str,
-    rendering: &mut Rendering,
-    target: &mut Texture2D,
-    depth: &mut DepthTexture2D,
-    temp: &Path,
-) -> anyhow::Result<()> {
-    let mut skin = Skin::load(image::open(&path)?, sprite, &rendering.context);
+impl TargetTexture {
+    pub fn new(rendering: &Rendering) -> Self {
+        let texture = Texture2D::new_empty::<[u8; 4]>(
+            &rendering.context,
+            rendering.viewport.width,
+            rendering.viewport.height,
+            Interpolation::Nearest,
+            Interpolation::Nearest,
+            None,
+            Wrapping::ClampToEdge,
+            Wrapping::ClampToEdge,
+        );
+        let depth = DepthTexture2D::new::<f32>(
+            &rendering.context,
+            rendering.viewport.width,
+            rendering.viewport.height,
+            Wrapping::ClampToEdge,
+            Wrapping::ClampToEdge,
+        );
 
+        Self { texture, depth }
+    }
+}
+
+fn create_subdir(rendered_dir: &Path, subdir: &str, index: usize) -> anyhow::Result<()> {
+    std::fs::create_dir(rendered_dir.join(&format!("{subdir}{index}")))
+        .with_context(|| format!("subdirectory {subdir}{index}"))
+}
+
+pub fn render_skin(
+    atlas: &DynamicImage,
+    rendered_dir: &Path,
+    sprite_prefix: &str,
+    rendering: &mut Rendering,
+    index: usize,
+) -> anyhow::Result<()> {
+    let sprite = sprite_prefix.to_skin_sprite();
+    let mut target = TargetTexture::new(&rendering);
+    let mut skin = Skin::load(atlas, &sprite, &rendering.context);
+
+    create_subdir(rendered_dir, "sprites", index)?;
     for frame_index in 'A'..='W' {
         match frame_index {
             'A' | 'C' => skin.reset(),
@@ -72,15 +73,15 @@ pub fn render_sprites(
         match frame_index {
             'A'..='G' => {
                 for rotation in 1..=8 {
-                    render_sprite(
+                    render_skin_frame(
                         &skin,
-                        sprite,
+                        &sprite,
                         frame_index,
                         rotation,
                         rendering,
-                        target,
-                        depth,
-                        temp,
+                        &mut target,
+                        rendered_dir,
+                        index,
                     )?;
                     rendering
                         .camera
@@ -90,15 +91,15 @@ pub fn render_sprites(
             'H'..='W' => {
                 let rotation = 0;
 
-                render_sprite(
+                render_skin_frame(
                     &skin,
-                    sprite,
+                    &sprite,
                     frame_index,
                     rotation,
                     rendering,
-                    target,
-                    depth,
-                    temp,
+                    &mut target,
+                    rendered_dir,
+                    index,
                 )?;
             }
             _ => unreachable!(),
@@ -108,57 +109,20 @@ pub fn render_sprites(
     Ok(())
 }
 
-fn render_sprite(
-    skin: &Skin,
-    sprite: &str,
-    frame_index: char,
-    rotation: i32,
-    rendering: &Rendering,
-    target: &mut Texture2D,
-    depth: &mut DepthTexture2D,
-    temp: &Path,
-) -> anyhow::Result<()> {
-    let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
-        .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
-        .render(
-            &rendering.camera,
-            skin.limbs
-                .iter()
-                .flat_map(|p| &p.faces)
-                .map(|f| &f.model)
-                .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
-            &[],
-        )
-        .read_color();
-
-    use three_d_asset::io::Serialize;
-
-    three_d_asset::io::save(
-        &CpuTexture {
-            data: TextureData::RgbaU8(pixels),
-            width: rendering.viewport.width,
-            height: rendering.viewport.height,
-            ..Default::default()
-        }
-        .serialize(
-            temp.join("sprites")
-                .join(format!("{sprite}{frame_index}{rotation}.png")),
-        )?,
-    )?;
-
-    Ok(())
-}
-
-pub fn render_crouch_sprites(
-    path: &str,
-    sprite: &str,
+pub fn render_skin_with_crouch(
+    atlas: &DynamicImage,
+    rendered_dir: &Path,
+    sprite_prefix: &str,
     rendering: &mut Rendering,
-    target: &mut Texture2D,
-    depth: &mut DepthTexture2D,
-    temp: &Path,
+    index: usize,
 ) -> anyhow::Result<()> {
-    let mut skin = Skin::load_crouched(image::open(&path)?, sprite, &rendering.context);
+    render_skin(atlas, rendered_dir, sprite_prefix, rendering, index)?;
 
+    let sprite = sprite_prefix.to_crouched_skin_sprite();
+    let mut target = TargetTexture::new(&rendering);
+    let mut skin = Skin::load_crouched(atlas, &sprite, &rendering.context);
+
+    create_subdir(rendered_dir, "crouch-sprites", index)?;
     for frame_index in 'A'..='G' {
         match frame_index {
             'A' | 'C' => skin.reset_crouched(),
@@ -170,15 +134,15 @@ pub fn render_crouch_sprites(
         }
 
         for rotation in 1..=8 {
-            render_crouch_sprite(
+            render_crouched_skin_frame(
                 &skin,
-                sprite,
+                &sprite,
                 frame_index,
                 rotation,
                 rendering,
-                target,
-                depth,
-                temp,
+                &mut target,
+                rendered_dir,
+                index,
             )?;
             rendering
                 .camera
@@ -189,64 +153,25 @@ pub fn render_crouch_sprites(
     Ok(())
 }
 
-fn render_crouch_sprite(
-    skin: &Skin,
-    sprite: &str,
-    frame_index: char,
-    rotation: i32,
+pub fn render_mugshot(
+    atlas: &DynamicImage,
+    rendered_dir: &Path,
+    sprite_prefix: &str,
     rendering: &mut Rendering,
-    target: &mut Texture2D,
-    depth: &mut DepthTexture2D,
-    temp: &Path,
+    index: usize,
 ) -> anyhow::Result<()> {
-    let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
-        .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
-        .render(
-            &rendering.camera,
-            skin.limbs
-                .iter()
-                .flat_map(|p| &p.faces)
-                .map(|f| &f.model)
-                .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
-            &[],
-        )
-        .read_color();
-
-    use three_d_asset::io::Serialize;
-
-    three_d_asset::io::save(
-        &CpuTexture {
-            data: TextureData::RgbaU8(pixels),
-            width: rendering.viewport.width,
-            height: rendering.viewport.height,
-            ..Default::default()
-        }
-        .serialize(
-            temp.join("crouch_sprites")
-                .join(format!("{sprite}{frame_index}{rotation}.png")),
-        )?,
-    )?;
-
-    Ok(())
-}
-
-pub fn render_mugshots(
-    path: &str,
-    mugshot: &str,
-    rendering: &mut Rendering,
-    target: &mut Texture2D,
-    depth: &mut DepthTexture2D,
-    temp: &Path,
-) -> anyhow::Result<()> {
+    rendering.camera.translate(Vec3::unit_z() * 10.0);
+    let sprite = sprite_prefix.to_mugshot_sprite();
+    let mut target = TargetTexture::new(&rendering);
     let mut head = Limb::load(
-        &image::open(path)?,
+        atlas,
         "head".into(),
         Patch::HEAD,
         Vec3::zero(),
         &rendering.context,
     );
     let mut helmet = Trim::load(
-        &image::open(path)?,
+        atlas,
         "helmet".into(),
         Patch::HELMET,
         Vec3::zero(),
@@ -254,6 +179,7 @@ pub fn render_mugshots(
     );
     let suffixes = ["DEAD", "EVL", "GOD", "KILL", "OUCH", "ST", "TL", "TR"];
 
+    create_subdir(rendered_dir, "mugshot", index)?;
     for suffix in suffixes {
         match suffix {
             "DEAD" => {
@@ -291,16 +217,32 @@ pub fn render_mugshots(
         }
 
         match suffix {
-            "DEAD" | "GOD" => render_mugshot(
-                &head, &helmet, mugshot, suffix, 0, rendering, target, depth, temp,
+            "DEAD" | "GOD" => render_mugshot_frame(
+                &head,
+                &helmet,
+                &sprite,
+                suffix,
+                0,
+                rendering,
+                &mut target,
+                rendered_dir,
+                index,
             )?,
             "EVL" | "KILL" | "OUCH" => {
                 for i in 0..5 {
                     let saturation = 255 / (i + 1);
                     head.apply_red(saturation);
                     helmet.apply_red(saturation);
-                    render_mugshot(
-                        &head, &helmet, mugshot, suffix, i, rendering, target, depth, temp,
+                    render_mugshot_frame(
+                        &head,
+                        &helmet,
+                        &sprite,
+                        suffix,
+                        i,
+                        rendering,
+                        &mut target,
+                        rendered_dir,
+                        index,
                     )?;
                 }
                 let axis_angle = [(Vec3::unit_x(), 0.0)];
@@ -322,16 +264,16 @@ pub fn render_mugshots(
                         let axis_angle = [(Vec3::unit_y(), angle)];
                         head.rotate_around(Vec3::zero(), &axis_angle);
                         helmet.rotate_around(Vec3::zero(), &axis_angle);
-                        render_mugshot(
+                        render_mugshot_frame(
                             &head,
                             &helmet,
-                            mugshot,
+                            &sprite,
                             &format!("{suffix}{x}"),
                             y,
                             rendering,
-                            target,
-                            depth,
-                            temp,
+                            &mut target,
+                            rendered_dir,
+                            index,
                         )?;
                     }
                 }
@@ -341,48 +283,119 @@ pub fn render_mugshots(
                     let saturation = 255 / (i + 1);
                     head.apply_red(saturation);
                     helmet.apply_red(saturation);
-                    render_mugshot(
+                    render_mugshot_frame(
                         &head,
                         &helmet,
-                        mugshot,
+                        &sprite,
                         &format!("{suffix}{i}"),
                         0,
                         rendering,
-                        target,
-                        depth,
-                        temp,
+                        &mut target,
+                        rendered_dir,
+                        index,
                     )?;
                 }
             }
             _ => unreachable!(),
         }
     }
+    Ok(())
+}
+
+pub fn render_fist(
+    atlas: &DynamicImage,
+    rendered_dir: &Path,
+    sprite_prefix: &str,
+    rendering: &mut Rendering,
+    index: usize,
+) -> anyhow::Result<()> {
+    let sprite = sprite_prefix.to_fist_sprite();
+    let mut target = TargetTexture::new(&rendering);
+    let position = Vec3::unit_x() * 3.5;
+    let mut arm = Limb::load(
+        atlas,
+        "arm".into(),
+        Patch::RIGHT_ARM,
+        position,
+        &rendering.context,
+    );
+    let mut sleeve = Trim::load(
+        atlas,
+        "arm".into(),
+        Patch::RIGHT_SLEEVE,
+        position,
+        &rendering.context,
+    );
+
+    let delta = 28.0;
+
+    rendering.camera.rotate_around(Vec3::zero(), PI, 0.0);
+    rendering.camera.translate(Vec3::unit_z() * -delta);
+
+    create_subdir(rendered_dir, "fist", index)?;
+    for frame_index in 'A'..='I' {
+        let rotation = [
+            (
+                Vec3::unit_x(),
+                match frame_index {
+                    'A' => 130.0,
+                    'B' => 135.0,
+                    'C' => 125.0,
+                    'D' => 115.0,
+                    'E' => 105.0,
+                    'F' => 110.0,
+                    'G' => 115.0,
+                    'H' => 120.0,
+                    'I' => 125.0,
+                    _ => unreachable!(),
+                },
+            ),
+            (Vec3::unit_y(), -115.0),
+        ];
+        let pivot = Vec3::zero();
+        arm.rotate_around(pivot, &rotation);
+        sleeve.rotate_around(pivot, &rotation);
+
+        render_fist_frame(
+            &arm,
+            &sleeve,
+            &sprite,
+            frame_index,
+            rendering,
+            &mut target,
+            rendered_dir,
+            index,
+        )?;
+    }
 
     Ok(())
 }
 
-fn render_mugshot(
-    head: &Limb,
-    helmet: &Trim,
-    mugshot: &str,
-    suffix: &str,
-    index: u8,
+fn render_skin_frame(
+    skin: &Skin,
+    sprite: &str,
+    frame_index: char,
+    rotation: i32,
     rendering: &Rendering,
-    target: &mut Texture2D,
-    depth: &mut DepthTexture2D,
-    temp: &Path,
+    target: &mut TargetTexture,
+    rendered_dir: &Path,
+    index: usize,
 ) -> anyhow::Result<()> {
-    let pixels = RenderTarget::new(target.as_color_target(None), depth.as_depth_target())
-        .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
-        .render(
-            &rendering.camera,
-            head.faces
-                .iter()
-                .map(|f| &f.model)
-                .chain(helmet.texels.iter().map(|t| &t.model)),
-            &[],
-        )
-        .read_color();
+    let pixels = RenderTarget::new(
+        target.texture.as_color_target(None),
+        target.depth.as_depth_target(),
+    )
+    .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
+    .render(
+        &rendering.camera,
+        skin.limbs
+            .iter()
+            .flat_map(|p| &p.faces)
+            .map(|f| &f.model)
+            .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
+        &[],
+    )
+    .read_color();
 
     use three_d_asset::io::Serialize;
 
@@ -394,11 +407,146 @@ fn render_mugshot(
             ..Default::default()
         }
         .serialize(
-            temp.join("mugshots")
-                .join(format!("{mugshot}{suffix}{index}.png")),
+            rendered_dir
+                .join(format!("sprites{index}"))
+                .join(format!("{sprite}{frame_index}{rotation}.png")),
         )?,
     )?;
 
+    Ok(())
+}
+
+fn render_crouched_skin_frame(
+    skin: &Skin,
+    sprite: &str,
+    frame_index: char,
+    rotation: i32,
+    rendering: &mut Rendering,
+    target: &mut TargetTexture,
+    rendered_dir: &Path,
+    index: usize,
+) -> anyhow::Result<()> {
+    let pixels = RenderTarget::new(
+        target.texture.as_color_target(None),
+        target.depth.as_depth_target(),
+    )
+    .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
+    .render(
+        &rendering.camera,
+        skin.limbs
+            .iter()
+            .flat_map(|p| &p.faces)
+            .map(|f| &f.model)
+            .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
+        &[],
+    )
+    .read_color();
+
+    use three_d_asset::io::Serialize;
+
+    three_d_asset::io::save(
+        &CpuTexture {
+            data: TextureData::RgbaU8(pixels),
+            width: rendering.viewport.width,
+            height: rendering.viewport.height,
+            ..Default::default()
+        }
+        .serialize(
+            rendered_dir
+                .join(format!("crouch-sprites{index}"))
+                .join(format!("{sprite}{frame_index}{rotation}.png")),
+        )?,
+    )?;
+
+    Ok(())
+}
+
+fn render_mugshot_frame(
+    head: &Limb,
+    helmet: &Trim,
+    sprite: &str,
+    suffix: &str,
+    frame_index: u8,
+    rendering: &Rendering,
+    target: &mut TargetTexture,
+    rendered_dir: &Path,
+    index: usize,
+) -> anyhow::Result<()> {
+    let pixels = RenderTarget::new(
+        target.texture.as_color_target(None),
+        target.depth.as_depth_target(),
+    )
+    .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
+    .render(
+        &rendering.camera,
+        head.faces
+            .iter()
+            .map(|f| &f.model)
+            .chain(helmet.texels.iter().map(|t| &t.model)),
+        &[],
+    )
+    .read_color();
+
+    use three_d_asset::io::Serialize;
+
+    three_d_asset::io::save(
+        &CpuTexture {
+            data: TextureData::RgbaU8(pixels),
+            width: rendering.viewport.width,
+            height: rendering.viewport.height,
+            ..Default::default()
+        }
+        .serialize(
+            rendered_dir
+                .join(format!("mugshot{index}"))
+                .join(format!("{sprite}{suffix}{frame_index}.png")),
+        )?,
+    )?;
+
+    Ok(())
+}
+
+fn render_fist_frame(
+    arm: &Limb,
+    sleeve: &Trim,
+    sprite: &str,
+    frame_index: char,
+    rendering: &Rendering,
+    target: &mut TargetTexture,
+    rendered_dir: &Path,
+    index: usize,
+) -> anyhow::Result<()> {
+    let sprite = sprite.replace('\\', "^");
+    let pixels = RenderTarget::new(
+        target.texture.as_color_target(None),
+        target.depth.as_depth_target(),
+    )
+    .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
+    .render(
+        &rendering.camera,
+        arm.faces
+            .iter()
+            .map(|f| &f.model)
+            .chain(sleeve.texels.iter().map(|t| &t.model)),
+        &[],
+    )
+    .read_color();
+
+    use three_d_asset::io::Serialize;
+
+    three_d_asset::io::save(
+        &CpuTexture {
+            data: TextureData::RgbaU8(pixels),
+            width: rendering.viewport.width,
+            height: rendering.viewport.height,
+            ..Default::default()
+        }
+        .serialize(
+            rendered_dir
+                .join(format!("fist{index}"))
+                .join(format!("{sprite}{frame_index}0.png")),
+        )?,
+    )?;
     Ok(())
 }
 
@@ -437,47 +585,47 @@ impl Skin {
     const CROUCH_HEAD_OFFSET: Vec3 = vec3(0.0, -2.0, 3.0);
     const CROUCH_SLEEVE_OFFSET: Vec3 = vec3(0.0, 0.0, -2.0);
 
-    fn load(atlas: image::DynamicImage, name: &str, context: &Context) -> Self {
+    fn load(atlas: &image::DynamicImage, name: &str, context: &Context) -> Self {
         if atlas.get_pixel(55, 20).0[3] < 10 {
             Self {
                 limbs: [
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "Head",
                         Patch::HEAD,
                         vec3(0.0, 11.0, 0.0),
                         context,
                     ),
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "Torso",
                         Patch::TORSO,
                         vec3(0.0, 2.0, 0.0),
                         context,
                     ),
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "RightLeg",
                         Patch::RIGHT_LEG,
                         vec3(-2.0, -10.0, 0.0),
                         context,
                     ),
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "RightArm",
                         Patch::SLIM_RIGHT_ARM,
                         vec3(-5.5, 2.0, 0.0),
                         context,
                     ),
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "LeftLeg",
                         Patch::LEFT_LEG,
                         vec3(2.0, -10.0, 0.0),
                         context,
                     ),
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "LeftArm",
                         Patch::SLIM_LEFT_ARM,
                         vec3(5.5, 2.0, 0.0),
@@ -486,42 +634,42 @@ impl Skin {
                 ],
                 trim: [
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "Helmet",
                         Patch::HELMET,
                         vec3(0.0, 11.0, 0.0),
                         context,
                     ),
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "Shirt",
                         Patch::SHIRT,
                         vec3(0.0, 2.0, 0.0),
                         context,
                     ),
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "RightPants",
                         Patch::RIGHT_PANTS,
                         vec3(-2.0, -10.0, 0.0),
                         context,
                     ),
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "RightSleeve",
                         Patch::SLIM_RIGHT_SLEEVE,
                         vec3(-6.0, 2.0, 0.0),
                         context,
                     ),
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "LeftPants",
                         Patch::LEFT_PANTS,
                         vec3(2.0, -10.0, 0.0),
                         context,
                     ),
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "LeftSleeve",
                         Patch::SLIM_LEFT_SLEEVE,
                         vec3(6.0, 2.0, 0.0),
@@ -533,42 +681,42 @@ impl Skin {
             Self {
                 limbs: [
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "Head",
                         Patch::HEAD,
                         vec3(0.0, 11.0, 0.0),
                         context,
                     ),
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "Torso",
                         Patch::TORSO,
                         vec3(0.0, 2.0, 0.0),
                         context,
                     ),
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "RightLeg",
                         Patch::RIGHT_LEG,
                         vec3(-2.0, -10.0, 0.0),
                         context,
                     ),
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "RightArm",
                         Patch::RIGHT_ARM,
                         vec3(-6.0, 2.0, 0.0),
                         context,
                     ),
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "LeftLeg",
                         Patch::LEFT_LEG,
                         vec3(2.0, -10.0, 0.0),
                         context,
                     ),
                     Limb::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "LeftArm",
                         Patch::LEFT_ARM,
                         vec3(6.0, 2.0, 0.0),
@@ -577,42 +725,42 @@ impl Skin {
                 ],
                 trim: [
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "Helmet",
                         Patch::HELMET,
                         vec3(0.0, 11.0, 0.0),
                         context,
                     ),
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "Shirt",
                         Patch::SHIRT,
                         vec3(0.0, 2.0, 0.0),
                         context,
                     ),
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "RightPants",
                         Patch::RIGHT_PANTS,
                         vec3(-2.0, -10.0, 0.0),
                         context,
                     ),
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "RightSleeve",
                         Patch::RIGHT_SLEEVE,
                         vec3(-6.0, 2.0, 0.0),
                         context,
                     ),
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "LeftPants",
                         Patch::LEFT_PANTS,
                         vec3(2.0, -10.0, 0.0),
                         context,
                     ),
                     Trim::load(
-                        &atlas,
+                        atlas,
                         name.to_string() + "LeftSleeve",
                         Patch::LEFT_SLEEVE,
                         vec3(6.0, 2.0, 0.0),
@@ -623,7 +771,7 @@ impl Skin {
         }
     }
 
-    fn load_crouched(atlas: image::DynamicImage, name: &str, context: &Context) -> Skin {
+    fn load_crouched(atlas: &image::DynamicImage, name: &str, context: &Context) -> Skin {
         let mut skin = Self::load(atlas, name, context);
         let torso = &mut skin.limbs[Skin::TORSO];
         let shirt = &mut skin.trim[Skin::SHIRT];
