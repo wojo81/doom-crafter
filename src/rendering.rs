@@ -33,6 +33,30 @@ impl TargetTexture {
     }
 }
 
+trait AsObjects {
+    fn as_objects(&self) -> impl IntoIterator<Item = impl Object> + Clone;
+}
+
+impl AsObjects for Skin {
+    fn as_objects(&self) -> impl IntoIterator<Item = impl Object> + Clone {
+        self.limbs
+            .iter()
+            .flat_map(|p| &p.faces)
+            .map(|f| &f.model)
+            .chain(self.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model))
+    }
+}
+
+impl AsObjects for (&Limb, &Trim) {
+    fn as_objects(&self) -> impl IntoIterator<Item = impl Object> + Clone {
+        self.0
+            .faces
+            .iter()
+            .map(|f| &f.model)
+            .chain(self.1.texels.iter().map(|t| &t.model))
+    }
+}
+
 fn create_subdir(rendered_dir: &Path, subdir: &str, index: usize) -> anyhow::Result<()> {
     std::fs::create_dir(rendered_dir.join(&format!("{subdir}{index}")))
         .with_context(|| format!("subdirectory {subdir}{index}"))
@@ -70,18 +94,18 @@ pub fn render_skin(
             _ => unreachable!(),
         }
 
+        let objects = skin.as_objects();
         match frame_index {
             'A'..='G' => {
                 for rotation in 1..=8 {
-                    render_skin_frame(
-                        &skin,
-                        &sprite,
-                        frame_index,
-                        rotation,
-                        rendering,
+                    render_frame(
+                        objects.clone(),
+                        &rendering,
                         &mut target,
                         rendered_dir,
+                        "sprites",
                         index,
+                        &format!("{sprite}{frame_index}{rotation}"),
                     )?;
                     rendering
                         .camera
@@ -89,17 +113,14 @@ pub fn render_skin(
                 }
             }
             'H'..='W' => {
-                let rotation = 0;
-
-                render_skin_frame(
-                    &skin,
-                    &sprite,
-                    frame_index,
-                    rotation,
-                    rendering,
+                render_frame(
+                    objects.clone(),
+                    &rendering,
                     &mut target,
                     rendered_dir,
+                    "sprites",
                     index,
+                    &format!("{sprite}{frame_index}0"),
                 )?;
             }
             _ => unreachable!(),
@@ -133,16 +154,16 @@ pub fn render_skin_with_crouch(
             _ => unreachable!(),
         }
 
+        let objects = skin.as_objects();
         for rotation in 1..=8 {
-            render_crouched_skin_frame(
-                &skin,
-                &sprite,
-                frame_index,
-                rotation,
+            render_frame(
+                objects.clone(),
                 rendering,
                 &mut target,
                 rendered_dir,
+                "crouch-sprites",
                 index,
+                &format!("{sprite}{frame_index}{rotation}"),
             )?;
             rendering
                 .camera
@@ -217,32 +238,28 @@ pub fn render_mugshot(
         }
 
         match suffix {
-            "DEAD" | "GOD" => render_mugshot_frame(
-                &head,
-                &helmet,
-                &sprite,
-                suffix,
-                0,
+            "DEAD" | "GOD" => render_frame(
+                (&head, &helmet).as_objects(),
                 rendering,
                 &mut target,
                 rendered_dir,
+                "mugshot",
                 index,
+                &format!("{sprite}{suffix}0"),
             )?,
             "EVL" | "KILL" | "OUCH" => {
                 for i in 0..5 {
                     let saturation = 255 / (i + 1);
                     head.apply_red(saturation);
                     helmet.apply_red(saturation);
-                    render_mugshot_frame(
-                        &head,
-                        &helmet,
-                        &sprite,
-                        suffix,
-                        i,
-                        rendering,
+                    render_frame(
+                        (&head, &helmet).as_objects(),
+                        &rendering,
                         &mut target,
                         rendered_dir,
+                        "mugshot",
                         index,
+                        &format!("{sprite}{suffix}{i}"),
                     )?;
                 }
                 let axis_angle = [(Vec3::unit_x(), 0.0)];
@@ -264,16 +281,14 @@ pub fn render_mugshot(
                         let axis_angle = [(Vec3::unit_y(), angle)];
                         head.rotate_around(Vec3::zero(), &axis_angle);
                         helmet.rotate_around(Vec3::zero(), &axis_angle);
-                        render_mugshot_frame(
-                            &head,
-                            &helmet,
-                            &sprite,
-                            &format!("{suffix}{x}"),
-                            y,
-                            rendering,
+                        render_frame(
+                            (&head, &helmet).as_objects(),
+                            &rendering,
                             &mut target,
                             rendered_dir,
+                            "mugshot",
                             index,
+                            &format!("{sprite}{suffix}{x}{y}"),
                         )?;
                     }
                 }
@@ -283,16 +298,14 @@ pub fn render_mugshot(
                     let saturation = 255 / (i + 1);
                     head.apply_red(saturation);
                     helmet.apply_red(saturation);
-                    render_mugshot_frame(
-                        &head,
-                        &helmet,
-                        &sprite,
-                        &format!("{suffix}{i}"),
-                        0,
-                        rendering,
+                    render_frame(
+                        (&head, &helmet).as_objects(),
+                        &rendering,
                         &mut target,
                         rendered_dir,
+                        "mugshot",
                         index,
+                        &format!("{sprite}{suffix}{i}0"),
                     )?;
                 }
             }
@@ -356,45 +369,36 @@ pub fn render_fist(
         arm.rotate_around(pivot, &rotation);
         sleeve.rotate_around(pivot, &rotation);
 
-        render_fist_frame(
-            &arm,
-            &sleeve,
-            &sprite,
-            frame_index,
-            rendering,
+        render_frame(
+            (&arm, &sleeve).as_objects(),
+            &rendering,
             &mut target,
             rendered_dir,
+            "fist",
             index,
+            &format!("{sprite}{frame_index}0"),
         )?;
     }
 
     Ok(())
 }
 
-fn render_skin_frame(
-    skin: &Skin,
-    sprite: &str,
-    frame_index: char,
-    rotation: i32,
+fn render_frame(
+    objects: impl IntoIterator<Item = impl Object>,
     rendering: &Rendering,
     target: &mut TargetTexture,
     rendered_dir: &Path,
+    subdir: &str,
     index: usize,
+    file_stem: &str,
 ) -> anyhow::Result<()> {
+    let file_name = file_stem.replace("\\", "^");
     let pixels = RenderTarget::new(
         target.texture.as_color_target(None),
         target.depth.as_depth_target(),
     )
     .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
-    .render(
-        &rendering.camera,
-        skin.limbs
-            .iter()
-            .flat_map(|p| &p.faces)
-            .map(|f| &f.model)
-            .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
-        &[],
-    )
+    .render(&rendering.camera, objects, &[])
     .read_color();
 
     use three_d_asset::io::Serialize;
@@ -408,145 +412,11 @@ fn render_skin_frame(
         }
         .serialize(
             rendered_dir
-                .join(format!("sprites{index}"))
-                .join(format!("{sprite}{frame_index}{rotation}.png")),
+                .join(format!("{subdir}{index}"))
+                .join(format!("{file_name}.png")),
         )?,
     )?;
 
-    Ok(())
-}
-
-fn render_crouched_skin_frame(
-    skin: &Skin,
-    sprite: &str,
-    frame_index: char,
-    rotation: i32,
-    rendering: &mut Rendering,
-    target: &mut TargetTexture,
-    rendered_dir: &Path,
-    index: usize,
-) -> anyhow::Result<()> {
-    let pixels = RenderTarget::new(
-        target.texture.as_color_target(None),
-        target.depth.as_depth_target(),
-    )
-    .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
-    .render(
-        &rendering.camera,
-        skin.limbs
-            .iter()
-            .flat_map(|p| &p.faces)
-            .map(|f| &f.model)
-            .chain(skin.trim.iter().flat_map(|p| &p.texels).map(|t| &t.model)),
-        &[],
-    )
-    .read_color();
-
-    use three_d_asset::io::Serialize;
-
-    three_d_asset::io::save(
-        &CpuTexture {
-            data: TextureData::RgbaU8(pixels),
-            width: rendering.viewport.width,
-            height: rendering.viewport.height,
-            ..Default::default()
-        }
-        .serialize(
-            rendered_dir
-                .join(format!("crouch-sprites{index}"))
-                .join(format!("{sprite}{frame_index}{rotation}.png")),
-        )?,
-    )?;
-
-    Ok(())
-}
-
-fn render_mugshot_frame(
-    head: &Limb,
-    helmet: &Trim,
-    sprite: &str,
-    suffix: &str,
-    frame_index: u8,
-    rendering: &Rendering,
-    target: &mut TargetTexture,
-    rendered_dir: &Path,
-    index: usize,
-) -> anyhow::Result<()> {
-    let pixels = RenderTarget::new(
-        target.texture.as_color_target(None),
-        target.depth.as_depth_target(),
-    )
-    .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
-    .render(
-        &rendering.camera,
-        head.faces
-            .iter()
-            .map(|f| &f.model)
-            .chain(helmet.texels.iter().map(|t| &t.model)),
-        &[],
-    )
-    .read_color();
-
-    use three_d_asset::io::Serialize;
-
-    three_d_asset::io::save(
-        &CpuTexture {
-            data: TextureData::RgbaU8(pixels),
-            width: rendering.viewport.width,
-            height: rendering.viewport.height,
-            ..Default::default()
-        }
-        .serialize(
-            rendered_dir
-                .join(format!("mugshot{index}"))
-                .join(format!("{sprite}{suffix}{frame_index}.png")),
-        )?,
-    )?;
-
-    Ok(())
-}
-
-fn render_fist_frame(
-    arm: &Limb,
-    sleeve: &Trim,
-    sprite: &str,
-    frame_index: char,
-    rendering: &Rendering,
-    target: &mut TargetTexture,
-    rendered_dir: &Path,
-    index: usize,
-) -> anyhow::Result<()> {
-    let sprite = sprite.replace('\\', "^");
-    let pixels = RenderTarget::new(
-        target.texture.as_color_target(None),
-        target.depth.as_depth_target(),
-    )
-    .clear(ClearState::color_and_depth(0.0, 0.0, 0.0, 0.0, 1.0))
-    .render(
-        &rendering.camera,
-        arm.faces
-            .iter()
-            .map(|f| &f.model)
-            .chain(sleeve.texels.iter().map(|t| &t.model)),
-        &[],
-    )
-    .read_color();
-
-    use three_d_asset::io::Serialize;
-
-    three_d_asset::io::save(
-        &CpuTexture {
-            data: TextureData::RgbaU8(pixels),
-            width: rendering.viewport.width,
-            height: rendering.viewport.height,
-            ..Default::default()
-        }
-        .serialize(
-            rendered_dir
-                .join(format!("fist{index}"))
-                .join(format!("{sprite}{frame_index}0.png")),
-        )?,
-    )?;
     Ok(())
 }
 
