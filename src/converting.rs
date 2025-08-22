@@ -141,7 +141,7 @@ pub fn convert(data: &Vec<SkinData>, format: Format, produced_file: &Path) -> an
         },
     ) in data.iter().enumerate()
     {
-        names_and_sprite_prefixes.push((name.clone(), sprite_prefix.replace("\\", "^")));
+        names_and_sprite_prefixes.push((name.clone(), sprite_prefix.clone()));
         let image = image::open(path)?;
         for render in &renders {
             render(
